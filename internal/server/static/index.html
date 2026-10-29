@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CABO 卡波</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="bg" aria-hidden="true">
+  <span class="blob b1"></span>
+  <span class="blob b2"></span>
+  <span class="blob b3"></span>
+  <span class="speck s1"></span>
+  <span class="speck s2"></span>
+  <span class="speck s3"></span>
+  <span class="speck s4"></span>
+  <span class="speck s5"></span>
+  <span class="speck s6"></span>
+</div>
+
+<div id="app" class="hidden">
+  <header class="topbar">
+    <div class="logo">CABO</div>
+    <div class="chip" id="roundLabel">第 1 轮</div>
+    <div class="chip turn-chip" id="turnChip"></div>
+    <div class="spacer"></div>
+    <button id="btnRestart" class="ghost">重新开局</button>
+  </header>
+
+  <main class="table">
+    <section class="seats" id="seats"></section>
+
+    <section class="middle">
+      <div class="pile" id="deckPile">
+        <div class="deck-stack"><i></i><i></i><i></i></div>
+        <span class="pile-label">牌堆 <b id="deckCount">0</b></span>
+      </div>
+
+      <div class="pending-slot" id="pendingSlot"></div>
+
+      <div class="pile" id="discardPile">
+        <div class="discard-holder"></div>
+        <span class="pile-label">弃牌堆</span>
+      </div>
+    </section>
+
+    <section class="me">
+      <div class="me-bar" id="meBar"></div>
+      <div class="hand" id="myHand"></div>
+    </section>
+
+    <section class="actions" id="actions"></section>
+  </main>
+
+  <div class="fx" id="fx"></div>
+</div>
+
+<div class="overlay" id="startOverlay">
+  <div class="panel">
+    <div class="brand-mark">
+      <span class="brand-cabo">CABO</span>
+      <span class="brand-sub">记住你的牌 · 压到最低 · 喊出来</span>
+    </div>
+
+    <label class="field">
+      <span>你的名字</span>
+      <input id="nameInput" maxlength="8" placeholder="玩家" value="玩家">
+    </label>
+
+    <div class="field">
+      <span>电脑对手</span>
+      <div class="segmented" id="aiPicker">
+        <button data-ai="1">1 个</button>
+        <button data-ai="2" class="on">2 个</button>
+        <button data-ai="3">3 个</button>
+      </div>
+    </div>
+
+    <button class="primary" id="btnStart">开始游戏</button>
+
+    <div class="legend">
+      <div class="legend-item" data-tone="zero"><i></i><span>0 分</span></div>
+      <div class="legend-item" data-tone="low"><i></i><span>1–6</span></div>
+      <div class="legend-item" data-tone="peek"><i></i><span>看自己</span></div>
+      <div class="legend-item" data-tone="spy"><i></i><span>看对手</span></div>
+      <div class="legend-item" data-tone="swap"><i></i><span>换牌</span></div>
+      <div class="legend-item" data-tone="high"><i></i><span>13 高危</span></div>
+    </div>
+
+    <div class="goal">
+      <div class="goal-head">取胜条件</div>
+      <p>累计分数<strong>超过 100 分</strong>时游戏结束，<strong>总分最低</strong>的人获胜。</p>
+      <p class="goal-note">如果总分正好 100 分，可以重置为 50 分，每场限一次。</p>
+    </div>
+
+    <details class="rules">
+      <summary>怎么玩</summary>
+      <ul>
+        <li>每人 4 张暗牌，开局可看其中 2 张，之后全靠记忆。</li>
+        <li>回合三选一：摸牌堆、拿弃牌堆顶、喊 CABO。</li>
+        <li>7、8 看自己一张，9、10 看对手一张，11、12 交换场上任意两张。</li>
+        <li>拿弃牌堆时，可一次换出手上两张同数字的牌，只吃进一张。</li>
+        <li>觉得自己点数最低就喊 CABO，其他人各再走一回合后摊牌。</li>
+        <li>喊的人点数最低得 0 分，否则点数加 10 分；其余人按手牌点数计分。</li>
+        <li>牌堆摸空时本轮立即结束，同样按手牌点数结算。</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<div class="overlay hidden" id="roundOverlay"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
