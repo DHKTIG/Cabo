@@ -2,11 +2,16 @@
 
 一个双击就能玩的单机版 CABO 卡牌游戏。Go 编写，**双击直接弹出一个原生窗口**，不需要浏览器，也不需要安装任何运行时。
 
-![对局界面](docs/v4-play.png)
+[![CI](https://github.com/DHKTIG/Cabo/actions/workflows/ci.yml/badge.svg)](https://github.com/DHKTIG/Cabo/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-E8A33D.svg)](LICENSE)
+
+| 开始界面 | 对局界面 |
+|---|---|
+| ![开始界面](docs/screenshot-start.png) | ![对局界面](docs/screenshot-play.png) |
 
 ## 直接玩
 
-双击 `cabo.exe`，等一两秒弹出窗口，直接开始。
+从 [Releases](https://github.com/DHKTIG/Cabo/releases) 下载 `cabo.exe`，双击即可；也可以照下面的「自己编译」自己构建。
 
 | 参数 | 作用 |
 |---|---|
@@ -147,6 +152,18 @@ CABO 的核心信息只有两样：**这张牌值几分**，**它有没有技能
 
 完整规则和版本差异见 [`docs/CABO-玩法详解.md`](docs/CABO-玩法详解.md)。
 
+### 电脑强度
+
+开局可以选三档。三档的区别只在决策参数，**不靠作弊**——AI 只能看到自己有权知道的信息，也不会偷看牌堆。
+
+| 档位 | 行为 |
+|---|---|
+| 轻松 | 四张牌全记住且点数很低才喊 CABO，几乎不做置换，回合偏长、压力小 |
+| 标准 | 敢在只剩一张未知牌时赌一把；会把自己的高牌塞给领先者；会吃进弃牌堆的低牌来降分 |
+| 较真 | 更早喊、更爱换，盯住总分最低的人打 |
+
+实测每回合每人的行动次数（2 人局，各 300 局）：轻松 23.9、标准 14.0、较真 10.7。
+
 ## 本项目采用的规则决策
 
 CABO 没有唯一权威规则，各版本互相矛盾。本项目固定了以下选择（第二版为主）：
@@ -204,8 +221,15 @@ go test ./...
 2. **AI 对局守恒测试**（`internal/ai`）—— 让 4 个 AI 用 60 个不同种子互相对打，每步断言「牌堆 + 弃牌堆 + 所有手牌 + 待安置牌 = 54」。这条断言抓出过两个真实 bug：换出的牌没进弃牌堆。
 3. **HTTP 端到端测试**（`internal/server`）—— 通过真实接口打完整一局，验证没有非法状态、没有死循环、结束时分数最高者确实超过 100 且赢家是最低分。
 
+每次 push 到 `main` 都会在 GitHub Actions 上跑 `go vet` / `go test` / 构建，见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)；构建产物可以直接从 Actions 的 Artifacts 里下载。
+
 ## 已知限制
 
-- 单机版只维护一局游戏，两个浏览器窗口会互相干扰（单机场景用不上）。
-- AI 是启发式的，会记自己看过的牌、会做 1 换多、会在点数够低时喊 CABO，但不会算概率，也不会做心理战。
+- 单机版只维护一局游戏，开两个窗口会互相干扰。
+- AI 是启发式的：会记自己看过的牌、会赌、会干扰领先者，但不算概率，也不做心理战。
 - 没有存档，关掉窗口对局就没了。
+- 只在 Windows 上验证过（依赖系统自带的 WebView2 运行时）。
+
+## 许可
+
+[MIT](LICENSE)
