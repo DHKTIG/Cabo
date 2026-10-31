@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: vet / test / build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      # 静态资源是 go:embed 进去的，所以这里构建出的产物即为可分发版本
+      - name: build
+        run: go build -ldflags="-s -w -H windowsgui" -o cabo.exe ./cmd/cabo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cabo-windows-amd64
+          path: cabo.exe
+          if-no-files-found: error

@@ -1,0 +1,8 @@
+# 文本统一用 LF 存进仓库，避免 Windows / Linux 之间产生整文件的行尾 diff
+* text=auto eol=lf
+
+# 二进制资源不要做行尾转换，也不要尝试 diff
+*.exe   binary
+*.ico   binary
+*.syso  binary
+*.png   binary

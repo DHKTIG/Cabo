@@ -56,7 +56,7 @@ go build -o cabo-dev.exe ./cmd/cabo                        # 出带控制台的�
 
 ```
 E:\Cabo\
-├── cabo.exe                     成品（GUI 版）
+├── cabo.exe                     构建产物（GUI 版，不纳入版本控制，发版走 GitHub Releases）
 ├── go.mod / go.sum
 ├── README.md                    给玩家看的说明
 ├── HANDOVER.md                  本文件
@@ -369,7 +369,6 @@ setView(v, { skipCabo: true }); // 再切到新状态
 ---
 
 ## 八、分发时会被 SmartScreen 拦
-
 双击 exe 可能弹「Windows 已保护你的电脑 / 发布者：发布者未知」。**这不是病毒，是 exe 没有代码签名、也没有信誉积累**，Windows SmartScreen 对「未知发布者」的默认行为。
 
 已确认的事实（2026-10-30 查）：
@@ -429,3 +428,15 @@ go build -ldflags="-s -w -H windowsgui" -o cabo.exe ./cmd/cabo
 
 - 先问具体是哪个元素（颜色？布局？动效？）
 - 只调那一个，不要整体翻新——已经翻过两轮，每次都牵动大量 CSS
+
+---
+
+## 十、仓库约定（2026-11 整理）
+
+- **`cabo.exe` 不再纳入版本控制**。它每次构建都变、单个 7.6 MB，留在历史里只会让仓库膨胀。分发走 GitHub Releases：`git tag v1.0.0 && git push origin v1.0.0`，然后在 Releases 页面基于该 tag 上传本地构建的 `cabo.exe`。
+- **CI**：`.github/workflows/ci.yml` 在每次 push / PR 时跑 `go vet`、`go test`、`go build`，并把产物作为 Actions Artifact 上传（`cabo-windows-amd64`）。即使不发 Release，也能从 Actions 里取到可运行的 exe。
+- **`.gitattributes`**：`* text=auto eol=lf` + 二进制标记。之前 Windows 上每次提交都刷 `LF will be replaced by CRLF` 警告，加上之后不再出现。
+- **忽略项**：`.workbuddy-ai/`、`cabo.log`、`cabo_webview2_data/`、`cabo.exe`、`cabo-dev.exe`。日志与缓存每次启动都会重写。
+- **许可证**：MIT（`LICENSE`）。仓库是 public 的，没有许可证等于保留所有权利。
+- **README 截图**：`docs/screenshot-start.png` / `docs/screenshot-play.png`。改完界面要同步重截，否则门面与实物不符（之前用的是四轮前的 v4 截图）。
+- **提交信息**：`<type>(<scope>): <摘要>`，body 用中文分条说明改动原因。type 取 feat / fix / refactor / chore / docs。
