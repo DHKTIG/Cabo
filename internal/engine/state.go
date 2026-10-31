@@ -226,6 +226,8 @@ func (s *State) endRound() {
 			ns = 50
 			s.Players[i].ResetUsed = true
 			s.addLog("  %s 分数正好 100，重置为 50（本场限一次）", s.Players[i].Name)
+			// 这条必须单独发事件：分数从 100 跳回 50 若没有任何解释，玩家会以为是 bug
+			s.emit(Event{Kind: EvReset, Player: i, Value: ns})
 		}
 		s.Players[i].Score = ns
 		s.Players[i].RoundPts = gains[i]

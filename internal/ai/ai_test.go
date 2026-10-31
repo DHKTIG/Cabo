@@ -51,7 +51,7 @@ func TestAIGamesKeepCardCount(t *testing.T) {
 				}
 			}
 
-			a := Decide(s, p, r)
+			a := Decide(s, p, r, Normal)
 			before := countCards(s)
 			ns, err := engine.Apply(s, p, a)
 			if err != nil {

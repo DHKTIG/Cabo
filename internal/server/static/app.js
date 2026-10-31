@@ -8,14 +8,23 @@ let busy = false;
 let animating = false;
 let aiRunning = false;
 let aiCount = 2;
+let aiLevel = 1;
 
 let prevCards = new Map();
 let prevDiscardId = null;
 let prevDeckCount = null;
 let prevScores = [];
 let seatEls = new Map();
+let enterCount = 0;
+let revealCount = 0;
+
+// audio.js 提供 window.snd；音频起不来时静默降级，不能影响牌局
+const snd = (...a) => window.snd && window.snd(...a);
+const sndMode = (m) => window.sndMode && window.sndMode(m);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -84,6 +93,12 @@ function makeCard(pid, idx, slot, opts = {}) {
   if (card) {
     el.dataset.tone = tone(card);
     el.innerHTML = cardFace(card);
+    if (slot.faceUp) {
+      const tag = document.createElement('span');
+      tag.className = 'pub-tag';
+      tag.title = '这张牌对所有人公开';
+      el.appendChild(tag);
+    }
   } else {
     el.innerHTML = '<div class="face back"></div>';
   }
@@ -95,7 +110,10 @@ function makeCard(pid, idx, slot, opts = {}) {
   }
   if (anim) {
     el.classList.add(anim);
-    if (anim === 'enter') el.style.animationDelay = idx * 45 + 'ms';
+    if (anim === 'enter') {
+      el.style.animationDelay = idx * 62 + 'ms';
+      enterCount++;
+    } else if (anim === 'reveal') revealCount++;
   }
 
   prevCards.set(posKey, { visible: !!card, id: card ? card.id : 0 });
@@ -106,6 +124,8 @@ function makeCard(pid, idx, slot, opts = {}) {
 
 function render() {
   if (!view) return;
+  enterCount = 0;
+  revealCount = 0;
   $('roundLabel').textContent = '第 ' + view.round + ' 轮';
   renderTurnChip();
   renderSeats();
@@ -113,6 +133,10 @@ function render() {
   renderMe();
   renderActions();
   renderOverlay();
+  // 一次渲染里进来 6 张以上就当作发牌，否则只是手牌张数变化的落位
+  if (enterCount >= 6) snd('deal', enterCount);
+  else if (enterCount > 0) snd('settle', enterCount);
+  for (let i = 0; i < revealCount; i++) setTimeout(() => snd('flip'), i * 95);
 }
 
 function renderTurnChip() {
@@ -120,6 +144,7 @@ function renderTurnChip() {
   if (!view || view.gameOver || view.phase === 'roundEnd') {
     el.textContent = '';
     el.className = 'chip turn-chip';
+    el.dataset.turn = '';
     return;
   }
   const t = view.players[view.turn];
@@ -127,7 +152,10 @@ function renderTurnChip() {
     el.textContent = '';
     return;
   }
-  el.className = 'chip turn-chip p' + view.turn;
+  // 只在真的换人时挂 swap，否则每次 render 重写 class 会把还没播完的动画掐掉
+  const changed = el.dataset.turn !== String(view.turn);
+  el.className = 'chip turn-chip p' + view.turn + (changed ? ' swap' : '');
+  el.dataset.turn = String(view.turn);
   el.innerHTML = `<span class="dot"></span>轮到 ${esc(t.name)}`;
 }
 
@@ -151,6 +179,7 @@ function renderSeats() {
       `<span class="seat-name">${p.isTurn ? '<span class="dot"></span>' : ''}${esc(p.name)}` +
       '<span class="think"><i></i><i></i><i></i></span></span>' +
       '</span>' +
+      `<span class="seat-cards${p.handCount === 4 ? '' : ' odd'}" title="手里 ${p.handCount} 张牌">${p.handCount}</span>` +
       `<span class="seat-score">${p.score}</span>`;
     seat.appendChild(head);
 
@@ -180,6 +209,7 @@ function renderSeats() {
 
 function renderMiddle() {
   $('deckCount').textContent = view.deckCount;
+  $('discardCount').textContent = view.discardCount;
 
   if (prevDeckCount !== null && prevDeckCount !== view.deckCount) {
     const stack = document.querySelector('.deck-stack');
@@ -232,11 +262,23 @@ function renderMe() {
   if (p.isCaller) {
     badges += '<span class="turn-badge cabo">已喊 CABO</span>';
   }
+  // 喊 CABO 是全场最大的决定，给一个随时可见的估值，别让玩家靠心算
+  let knownSum = 0;
+  let unknown = 0;
+  p.hand.forEach((sl) => {
+    if (sl.visible && sl.card) knownSum += sl.card.points;
+    else unknown++;
+  });
+  const est =
+    !view.gameOver && view.phase !== 'roundEnd'
+      ? `<span class="me-est" title="已知的牌共 ${knownSum} 点，还有 ${unknown} 张没看过">已知 ${knownSum} 点 · 未知 ${unknown} 张</span>`
+      : '';
   bar.innerHTML =
     `<span class="avatar p0">${esc(initial(p.name))}</span>` +
     `<span>${esc(p.name)}</span>` +
     `<b>${p.score} 分</b>` +
     `<span class="me-progress"><i style="width:${pct(p.score)}%"></i></span>` +
+    est +
     badges;
 
   const hand = $('myHand');
@@ -326,6 +368,9 @@ function renderActions() {
     add('摸牌堆', 'primary', () => act({ type: 'drawDeck' }));
     add('拿弃牌堆', '', () => { mode = 'claim'; picked = []; render(); }, !c.takeDiscard);
     add('喊 CABO', 'danger', callCabo, !c.callCabo);
+    // 灰掉的按钮要说清楚为什么，别让玩家猜
+    if (!c.takeDiscard) hint('弃牌堆还是空的，这回合只能摸牌堆');
+    else if (!c.callCabo) hint('已经有人喊过 CABO，本轮不能再喊');
     return;
   }
 
@@ -341,8 +386,16 @@ function pickCard(player, slot) {
   if (mode === 'peek' || mode === 'claim') {
     if (player !== 0) return;
     const at = picked.indexOf(slot);
-    if (at >= 0) picked.splice(at, 1);
-    else if (picked.length < (mode === 'peek' ? 2 : 3)) picked.push(slot);
+    if (at >= 0) {
+      picked.splice(at, 1);
+      snd('deselect');
+    } else if (picked.length < (mode === 'peek' ? 2 : 3)) {
+      picked.push(slot);
+      snd('select', picked.length - 1);
+    } else {
+      snd('error');
+      return;
+    }
     render();
     return;
   }
@@ -364,8 +417,16 @@ function pickCard(player, slot) {
   }
   if (mode === 'swap') {
     const at = swapPicks.findIndex((t) => t.player === player && t.slot === slot);
-    if (at >= 0) swapPicks.splice(at, 1);
-    else if (swapPicks.length < 2) swapPicks.push({ player, slot });
+    if (at >= 0) {
+      swapPicks.splice(at, 1);
+      snd('deselect');
+    } else if (swapPicks.length < 2) {
+      swapPicks.push({ player, slot });
+      snd('select', swapPicks.length - 1);
+    } else {
+      snd('error');
+      return;
+    }
     render();
     return;
   }
@@ -402,7 +463,22 @@ async function nextRound() {
   applyView(r.view);
 }
 
+// .hidden 是 display:none，退场动画必须先播完再挂上，否则直接被砍掉
+function hideOverlay(el) {
+  if (el.classList.contains('hidden')) return;
+  if (reduceMotion()) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.classList.add('leaving');
+  setTimeout(() => {
+    el.classList.remove('leaving');
+    el.classList.add('hidden');
+  }, 330);
+}
+
 function toast(msg) {
+  snd('error');
   const d = document.createElement('div');
   d.className = 'pill';
   d.style.color = '#f0a5a5';
@@ -466,33 +542,41 @@ function flyCard(fromRect, toRect, card, opts = {}) {
 
   const dx = cx1 - cx0;
   const dy = cy1 - cy0;
+  const dist = Math.hypot(dx, dy);
   const dur = opts.duration || 700;
+  // 上抛高度跟着距离走：固定 66px 会让近距离的飞行看着像飘、远距离的像贴地滑
+  const lift = clamp(22 + dist * 0.17, 26, 98);
+  const spin = (dx < 0 ? -9 : 9) + (Math.random() * 8 - 4);
 
   const anim = el.animate(
     [
-      { transform: 'translate(0,0) scale(.45) rotate(-16deg)', opacity: 0, offset: 0 },
       {
-        transform: `translate(${dx * 0.05}px, ${dy * 0.05 - 8}px) scale(.94) rotate(-10deg)`,
-        opacity: 1,
-        offset: 0.14,
+        transform: 'perspective(820px) translate(0,0) scale(.42) rotateZ(-18deg) rotateY(-26deg)',
+        opacity: 0,
+        offset: 0,
       },
       {
-        transform: `translate(${dx * 0.45}px, ${dy * 0.45 - 66}px) scale(1.22) rotate(3deg)`,
+        transform: `perspective(820px) translate(${dx * 0.06}px, ${dy * 0.06 - 10}px) scale(.96) rotateZ(${spin * 0.5}deg) rotateY(-13deg)`,
         opacity: 1,
-        offset: 0.56,
+        offset: 0.16,
       },
       {
-        transform: `translate(${dx}px, ${dy}px) scale(1.04) rotate(7deg)`,
+        transform: `perspective(820px) translate(${dx * 0.46}px, ${dy * 0.46 - lift}px) scale(1.24) rotateZ(${spin}deg) rotateY(9deg)`,
         opacity: 1,
-        offset: 0.86,
+        offset: 0.54,
       },
       {
-        transform: `translate(${dx}px, ${dy}px) scale(.9) rotate(5deg)`,
+        transform: `perspective(820px) translate(${dx}px, ${dy}px) scale(1.06) rotateZ(${spin * 0.3}deg) rotateY(0deg)`,
+        opacity: 1,
+        offset: 0.87,
+      },
+      {
+        transform: `perspective(820px) translate(${dx}px, ${dy + 4}px) scale(.93) rotateZ(0deg) rotateY(0deg)`,
         opacity: 0,
         offset: 1,
       },
     ],
-    { duration: dur, easing: 'cubic-bezier(.3,.8,.35,1)', fill: 'forwards' }
+    { duration: dur, easing: 'cubic-bezier(.32,.72,.3,1)', fill: 'forwards' }
   );
 
   let landed = false;
@@ -522,25 +606,50 @@ function runFlight(e) {
   switch (e.kind) {
     case 'draw':
       if (e.player !== 0) {
-        flyCard(deckRect(), seatHandRect(e.player), null, { duration: 700, onLand: () => pulseSeat(e.player) });
+        snd('draw');
+        flyCard(deckRect(), seatHandRect(e.player), null, {
+          duration: 700,
+          onLand: () => {
+            pulseSeat(e.player);
+            snd('receive');
+          },
+        });
       }
       break;
     case 'discard':
     case 'place':
       if (e.card) {
-        flyCard(seatHandRect(e.player), discardRect(), e.card, { duration: 700, onLand: pulseDiscard });
+        snd(e.kind);
+        flyCard(seatHandRect(e.player), discardRect(), e.card, {
+          duration: 700,
+          onLand: () => {
+            pulseDiscard();
+            snd('land');
+          },
+        });
       }
       break;
     case 'take':
       if (e.card) {
-        flyCard(discardRect(), seatHandRect(e.player), e.card, { duration: 700, onLand: () => pulseSeat(e.player) });
+        snd('take');
+        flyCard(discardRect(), seatHandRect(e.player), e.card, {
+          duration: 700,
+          onLand: () => {
+            pulseSeat(e.player);
+            snd('receive');
+          },
+        });
       }
       break;
     case 'swap':
-      if (e.target && e.target2) flySwap(e.target, e.target2);
+      if (e.target && e.target2) {
+        snd('swap');
+        flySwap(e.target, e.target2);
+      }
       break;
     case 'cabo':
       showCaboBanner();
+      snd('cabo');
       break;
     default:
       break;
@@ -632,38 +741,65 @@ function playEvents(events, opts = {}) {
   }
 }
 
+// flown：飞牌路径已经配过动作音了（AI 回合），这里只补胶囊提示，不重复发声。
+// 玩家自己的动作走同步路径、没有飞牌，动作音由这里发。
 function playOne(e, opts = {}) {
+  const flown = !!opts.flown;
   switch (e.kind) {
     case 'cabo':
-      if (!opts.skipCabo) showCaboBanner();
+      if (!flown) {
+        showCaboBanner();
+        snd('cabo');
+      }
       pill(e.player, e.player === 0 ? '你喊了 CABO' : '对手喊了 CABO', '#e9b44c');
       break;
     case 'draw':
+      if (!flown) snd('draw');
       pill(e.player, '摸了一张牌');
       break;
     case 'discard':
+      if (!flown) {
+        snd('discard');
+        setTimeout(() => snd('land'), 300);
+      }
       pill(e.player, e.card && e.card.label ? `弃掉 ${e.card.label}` : '弃掉一张');
       break;
     case 'place':
+      if (!flown) {
+        snd('place');
+        setTimeout(() => snd('land'), 300);
+      }
       pill(e.player, e.card && e.card.label ? `换掉 ${e.card.label}` : '换了一张');
       break;
     case 'take': {
+      if (!flown) {
+        snd('take');
+        setTimeout(() => snd('receive'), 340);
+      }
       const lbl = e.card && e.card.label ? e.card.label : '一张牌';
       pill(e.player, `换走 ${lbl}${e.value > 1 ? ` · 出 ${e.value} 张` : ''}`, '#3fbfb4');
       break;
     }
     case 'penalty':
+      snd('penalty');
       pill(e.player, '记错了！收下这张', '#f0a5a5');
       break;
+    case 'reset':
+      snd('score');
+      pill(e.player, '正好 100 分，重置为 50', '#e9b44c');
+      break;
     case 'peek':
+      snd('peek');
       if (e.target) hitCard(e.target.player, e.target.slot);
       pill(e.player, '透视', '#3fbfb4');
       break;
     case 'spy':
+      snd('spy');
       if (e.target) hitCard(e.target.player, e.target.slot);
       pill(e.player, '窥探', '#9b7bf0');
       break;
     case 'swap':
+      if (!flown) snd('swap');
       if (e.target) hitCard(e.target.player, e.target.slot);
       if (e.target2) hitCard(e.target2.player, e.target2.slot);
       pill(e.player, '置换', '#ee8148');
@@ -690,8 +826,11 @@ function countUp(el, from, to, dur) {
 function renderOverlay() {
   const ov = $('roundOverlay');
   const show = view.phase === 'roundEnd' || view.gameOver;
-  ov.classList.toggle('hidden', !show);
-  if (!show) return;
+  if (!show) {
+    hideOverlay(ov);
+    return;
+  }
+  ov.classList.remove('hidden');
   if (ov.dataset.round === String(view.round) && ov.dataset.over === String(view.gameOver)) return;
   ov.dataset.round = String(view.round);
   ov.dataset.over = String(view.gameOver);
@@ -732,19 +871,30 @@ function renderOverlay() {
   ov.appendChild(panel);
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  panel.querySelectorAll('.score-row').forEach((row) => {
+  panel.querySelectorAll('.score-row').forEach((row, i) => {
     const t = row.querySelector('.total');
     const from = Number(t.dataset.from);
     const to = Number(t.dataset.to);
     t.textContent = to;
     if (!reduceMotion && from !== to) countUp(t, from, to, 720);
+    setTimeout(() => snd('tick', i), 480 + i * 90);
   });
+
+  // 让 CABO 的余音先落下去，再报结算
+  setTimeout(() => snd(view.gameOver ? (view.winner === 0 ? 'win' : 'lose') : 'score'), 300);
 }
 
 /* ---------------- 主流程 ---------------- */
 
 function setThinking(pid) {
   seatEls.forEach((el, i) => el.classList.toggle('thinking', i === pid));
+}
+
+// 有人喊了 CABO 或分数逼近 100，配乐就换成更紧的一档；结算/结束时退回稀疏的音乐盒
+function musicMode(v) {
+  if (!v || v.gameOver || v.phase === 'roundEnd') return 'menu';
+  if (v.players.some((p) => p.isCaller) || v.players.some((p) => p.score >= 80)) return 'tension';
+  return 'table';
 }
 
 function setView(v, opts = {}) {
@@ -758,6 +908,7 @@ function setView(v, opts = {}) {
   mode = 'idle';
   picked = [];
   swapPicks = [];
+  sndMode(musicMode(v));
   render();
   playEvents(v.events, opts);
 }
@@ -775,7 +926,7 @@ async function applyViewAnimated(v) {
   } finally {
     animating = false;
   }
-  setView(v, { skipCabo: true });
+  setView(v, { flown: true });
   for (const e of v.events || []) {
     if (e.kind === 'draw' || e.kind === 'take') pulseSeat(e.player);
   }
@@ -810,9 +961,10 @@ async function runAI() {
 
 async function startGame() {
   const name = ($('nameInput').value || '').trim() || '玩家';
-  const r = await api('/api/new', { name, ai: aiCount });
+  const r = await api('/api/new', { name, ai: aiCount, level: aiLevel });
   if (!r.ok) { toast(r.error || '开局失败'); return; }
-  $('startOverlay').classList.add('hidden');
+  snd('start');
+  hideOverlay($('startOverlay'));
   $('app').classList.remove('hidden');
   prevCards = new Map();
   prevDiscardId = null;
@@ -829,13 +981,25 @@ function restart() {
   $('app').classList.add('hidden');
   $('startOverlay').classList.remove('hidden');
   view = null;
+  sndMode('menu');
 }
+// 统一的按钮反馈音；用委托监听，动态生成的操作按钮也能覆盖到
+document.addEventListener('click', (e) => {
+  if (e.target.closest('button')) snd('ui');
+});
 
 $('aiPicker').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-ai]');
   if (!b) return;
   aiCount = Number(b.dataset.ai);
   [...$('aiPicker').children].forEach((x) => x.classList.toggle('on', x === b));
+});
+
+$('levelPicker').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-lv]');
+  if (!b) return;
+  aiLevel = Number(b.dataset.lv);
+  [...$('levelPicker').children].forEach((x) => x.classList.toggle('on', x === b));
 });
 
 $('btnStart').addEventListener('click', startGame);

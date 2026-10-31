@@ -26,6 +26,7 @@
     <div class="chip" id="roundLabel">第 1 轮</div>
     <div class="chip turn-chip" id="turnChip"></div>
     <div class="spacer"></div>
+    <div class="snd-mount" data-snd-mount></div>
     <button id="btnRestart" class="ghost">重新开局</button>
   </header>
 
@@ -42,7 +43,7 @@
 
       <div class="pile" id="discardPile">
         <div class="discard-holder"></div>
-        <span class="pile-label">弃牌堆</span>
+        <span class="pile-label">弃牌堆 <b id="discardCount">0</b></span>
       </div>
     </section>
 
@@ -78,6 +79,15 @@
       </div>
     </div>
 
+    <div class="field">
+      <span>电脑强度</span>
+      <div class="segmented" id="levelPicker">
+        <button data-lv="0">轻松</button>
+        <button data-lv="1" class="on">标准</button>
+        <button data-lv="2">较真</button>
+      </div>
+    </div>
+
     <button class="primary" id="btnStart">开始游戏</button>
 
     <div class="legend">
@@ -107,11 +117,17 @@
         <li>牌堆摸空时本轮立即结束，同样按手牌点数结算。</li>
       </ul>
     </details>
+
+    <div class="snd-foot">
+      <div class="snd-mount" data-snd-mount></div>
+      <span class="snd-tip">点开调音乐和音效</span>
+    </div>
   </div>
 </div>
 
 <div class="overlay hidden" id="roundOverlay"></div>
 
+<script src="audio.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

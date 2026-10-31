@@ -15,6 +15,7 @@ const (
 	EvSwap       EventKind = "swap"
 	EvCabo       EventKind = "cabo"
 	EvScore      EventKind = "score"
+	EvReset      EventKind = "reset"
 	EvGameOver   EventKind = "gameOver"
 )
 

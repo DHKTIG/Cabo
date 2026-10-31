@@ -1,2 +1,3 @@
-2026/10/29-23:52:18.946 7c8c Creating DB E:\Cabo\cabo_webview2_data\EBWebView\Default\Local Storage\leveldb since it was missing.
-2026/10/29-23:52:18.956 7c8c Reusing MANIFEST E:\Cabo\cabo_webview2_data\EBWebView\Default\Local Storage\leveldb/MANIFEST-000001
+2026/10/30-23:33:12.215 3cf0 Reusing MANIFEST E:\Cabo\cabo_webview2_data\EBWebView\Default\Local Storage\leveldb/MANIFEST-000001
+2026/10/30-23:33:12.216 3cf0 Recovering log #3
+2026/10/30-23:33:12.217 3cf0 Reusing old log E:\Cabo\cabo_webview2_data\EBWebView\Default\Local Storage\leveldb/000003.log 

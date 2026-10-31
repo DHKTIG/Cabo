@@ -14,7 +14,7 @@
 - 规则、AI、界面、动画全部完成；测试全绿（`go test ./...`）。
 - 原生窗口基于 WebView2（系统自带运行时），前端仍然是 HTML/CSS/JS，编译时嵌入二进制。
 
-**一句话：功能完整，视觉打磨过两轮，现在处于「可以交付给朋友玩」的阶段。**
+**一句话：功能完整（含配乐与音效），视觉打磨过两轮，现在处于「可以交付给朋友玩」的阶段。**
 
 ---
 
@@ -79,18 +79,20 @@ E:\Cabo\
 │   │   └── ai_test.go           60 个种子 × 全程牌数守恒
 │   └── server\
 │       ├── server.go            HTTP 接口 + 静态资源
+│       ├── prefs.go             音量设置的持久化（写文件，见 5.6 节）
 │       ├── errors.go
 │       ├── server_test.go       端到端打完整局
 │       └── static\              前端（编译时嵌入）
 │           ├── index.html
-│           ├── style.css        约 1000 行
-│           └── app.js           约 700 行
+│           ├── style.css        约 1120 行
+│           ├── app.js           约 740 行
+│           └── audio.js         音频层（合成 + 配乐），约 810 行
 └── docs\
     ├── CABO-玩法详解.md         完整规则调研（含各版本差异）
     └── 开发准备清单.md          立项时的规划文档
 ```
 
-代码量：Go 约 2200 行，前端约 1960 行。
+代码量：Go 约 2260 行，前端约 2670 行。
 
 ---
 
@@ -208,7 +210,38 @@ setView(v, { skipCabo: true }); // 再切到新状态
 
 ### 动效清单
 
-发牌错峰落入、3D 翻牌、弃牌落入、牌堆弹跳、飞牌（WAAPI 弧线）、胶囊提示、技能脉冲、CABO 全屏横幅、座位呼吸光晕、结算条生长 + 数字滚动、对手思考小点。
+发牌斜飞入落定、3D 翻牌、弃牌落入、牌堆弹跳、飞牌（WAAPI 弧线）、胶囊提示、技能脉冲、CABO 全屏横幅、座位呼吸光晕、结算条生长 + 数字滚动、对手思考小点。
+
+### 5.5 运动语言（v12 重做）
+
+**别再往单个动画里手写 `cubic-bezier(...)`**，用 `:root` 里这组变量：
+
+| 变量 | 值 | 用在哪 |
+|---|---|---|
+| `--e-out` | `cubic-bezier(.22,.61,.36,1)` | 常规减速、进度条、过渡 |
+| `--e-swing` | `cubic-bezier(.16,1.05,.3,1)` | 入场带回弹 |
+| `--e-spring` | `cubic-bezier(.34,1.46,.64,1)` | 座位上浮这类明显过冲 |
+| `--e-soft` | `cubic-bezier(.4,0,.2,1)` | 往复（思考小点） |
+| `--e-in` | `cubic-bezier(.55,0,.68,.19)` | 退场 |
+
+节奏：微反馈 ~160ms、入场 340–560ms、演出 900–2000ms。卡牌类动效一律带**过冲回落**（squash & stretch），这是「纸牌有重量」和「UI 元素在滑动」的区别。
+
+**几个必须知道的实现约束（都是踩出来的）：**
+
+- **翻牌必须从 `rotateY(88deg)` 起手**。之前从 -104° 开始，等于跳过了「侧成一条线」这个最关键的瞬间，牌面又全程清晰，看着只是牌在轻微倾斜。现在 0% 是一条窄缝 → 62% 越过正面带抬起 → 82% 回摆 → 100% 落定，配合 `.front::before` 的扫光。牌只有一个 `face`（暗牌内容根本不下发，做不了真假两面），所以 `.face { backface-visibility: hidden }` 是必要的。
+- **同一个元素上不要放两个 `animation`**。CSS 里 `animation` 是整体覆盖的，后写的规则会把先写的直接顶掉。踩过两次：① `.seat.receive` 顶掉 `.seat.active` 的呼吸动画 → 呼吸光和 receive 光环拆到 `::before` / `::after` 两层；② `.discard-holder.landing` 的 scale 和 `.card.dropIn` 抢 transform → frame 只做 `landDip` 下沉、冲击环走 `::after`、牌的入场留给 `.card.dropIn`。
+- **选中环要画在 `.card::after` 上，不能画在 `.front` 上**。开局挑 2 张看的时候四张牌全是背面，DOM 里根本没有 `.front` 元素，环画上去等于没有。
+- **音量弹层必须挂到 `document.body`，不能留在 `.snd` 里**。两个独立致因：① `.topbar` 有 `backdrop-filter`，会造出独立层叠上下文，弹层被困在里面，而 `.table` 在 DOM 里更靠后 → 弹层被牌桌整个盖住；② 首页 `.panel` 是 `overflow-y:auto` 的滚动容器，弹层会被裁掉。改成 `position: fixed` + `placePop()` 按按钮 rect 定位（左右夹进视口、下方放不下自动朝上翻），`z-index: 95`（高于 `.overlay` 的 80）。
+- **弹层显隐用 `visibility + opacity` 的 `.open` 类，不要用 `hidden` 属性**。`hidden` 有两个坑：作者写的 `display:flex` 会盖掉 UA 的 `[hidden]{display:none}`（害弹层永远展开着压在牌桌上）；而 `display` 的有无切换又会让元素脱离渲染树、脚本翻回可见时可能赶不上那一帧重绘。`visibility` 方案让元素常驻渲染树，切换只是属性变化，顺带还拿到淡入。
+- **无头截图看不到「脚本执行后才翻为可见」的 fixed 元素**。实测弹层所有诊断值都对（`display:flex`、`opacity:1`、`visibility:visible`、`zIndex:95`、`elementFromPoint(中心)` 返回它自己），连 transition 关掉直接落终态也一样，像素区仍是空白；而首屏就可见的 fixed 元素能正常截到。这是 headless 的重绘缺陷，不是产品问题——**验证「点击才出现」的层叠问题别依赖无头截图，用 `elementFromPoint` 判定谁在最上层**。
+- 内置浏览器面板若报 `NATIVE_BROWSER_VIEWPORT_UNAVAILABLE`（viewport 0×0、`visibilityState=hidden`），真实点击不可用，但 `evaluate_script` 和 `take_snapshot` 仍可用。
+- **飞牌的弧度高度跟着距离走**（`app.js` 的 `flyCard`：`lift = clamp(22 + dist*0.17, 26, 98)`）。写死 66px 的话近距离飞行像飘、远距离像贴地滑。旋转方向也按 `dx` 符号走，所以 swap 的两张牌自然反向。
+- **`.turn-chip` 的 `swap` 类只在真的换人时才挂**。每次 render 都重写 `className` 会把还没播完的动画掐断，用 `el.dataset.turn` 比对。
+- **`.hidden` 是 `display:none`**，退场动画必须先播完再挂上 → 用 `hideOverlay(el)`（`app.js`），别直接 `classList.add('hidden')`。
+
+发牌错峰在 `makeCard` 的 `idx * 62 + 'ms'`；AI 节奏仍在 `runAI()`（820ms / place 阶段 1050ms）；飞牌时长在 `FLIGHT_DUR`。
+
+所有动画仍受 `prefers-reduced-motion` 的全局降级规则约束（`style.css` 末尾），新增的伪元素动画也一并覆盖。
 
 **AI 节奏在 `app.js` 的 `runAI()` 里**：每步停 820ms，若已在 `place` 阶段停 1050ms。想调快慢只改这一处。
 
@@ -218,6 +251,45 @@ setView(v, { skipCabo: true }); // 再切到新状态
 
 所有动画都尊重 `prefers-reduced-motion`。
 
+### 5.6 音频层（audio.js）
+
+**没有使用任何音频素材文件**——所有声音都由 Web Audio 实时合成。理由：本机没有 ffmpeg／Python，无法转码或跑 AI 生成模型；而成品是「单个 exe 拷走就能玩」，几 MB 素材会把体积抬高一个量级。代价是音色偏合成器，不像真实采样。
+
+体积成本只有约 40 KB 代码。
+
+**结构**（`static/audio.js`，810 行，全文件包在一个 IIFE 里）：
+
+- **总线**：`sfxBus` / `musicBus` → `ducker` → `master` → `limiter`（DynamicsCompressor，阈值 -10 dB）→ destination。另有一条 `revIn → ConvolverNode → master` 的混响支路。
+- **混响**：没有 IR 文件，用「白噪声 × 幂衰减 + 单极低通 + 15 ms 预延迟」在运行时生成 2.1 秒的立体声冲激响应。
+- **音色基元**：`osc()`（振荡器 + 可选滤波 + 包络）、`noise()`（噪声 + 带通/高/低通）、`pluck()`（音乐盒/木琴：基音 + 微非谐泛音 + 敲击瞬态）、`bell()`（非谐泛音 2.76/5.4/8.93）、`bassNote()`、`flick()`（纸牌甩动 = 三段噪声瞬态）、`whoosh()`、`thud()`。
+- **23 个音效**：`ui select deselect deal settle flip draw discard place take land receive swap peek spy penalty error cabo start score tick win lose`。`play(name, arg)` 是唯一入口，内部 try/catch，音频出错不影响牌局。
+
+**按键反馈的接法**：`app.js` 底部一条委托监听 `document.addEventListener('click', e => { if (e.target.closest('button')) snd('ui') })`，动态生成的操作按钮和键盘 Enter 触发的 click 都能覆盖。
+
+**事件音效的关键约束**：AI 的动作是「先 `playFlights()` 播飞牌、再 `setView(v, {flown: true})`」。`playOne()` 里的 `flown` 用来判断**这条动作的运动音效是否已经响过**——飞过了就不重复发声，只补胶囊提示。玩家自己的动作走同步路径（没有飞牌），动作音由 `playOne` 发。`opts.skipCabo` 已改名为 `opts.flown`，同时管横幅和声音两件事。
+
+**配乐**：D 大调 **3/4 拍圆舞曲**，100 BPM，16 小节循环（两个 8 小节段：`D G Bm A D G A Dsus` / `Bm A G D Bm A G A`）。选 3/4 是为了避开 4/4 + backbeat 的赌场/酒吧感，这跟 README 里「CABO 是记忆桌游不是赌场」一致。旋律不是写死的：每小节按当前和弦从 4 组动机 × 6 种节奏型里摇，音高只取和弦内音（经过音用 `SCALE` 吸附到调内），句尾延长。听感是「同一首曲子一直在变奏」，而不是随机音符。
+
+三个模式由 `musicMode(view)` 在每次 `setView` 时决定：
+
+| 模式 | 触发 | 速度 | 配器 |
+|---|---|---|---|
+| `menu` | 首页 / 结算 / 结束 | 76 | 稀疏音乐盒 + 和弦织体 |
+| `table` | 正常对局 | 100 | 低音 + 三拍和弦 + 旋律 + 沙锤 |
+| `tension` | 有人喊过 CABO 或分数 ≥ 80 | 112 | 旋律降八度、去沙锤、加底鼓脉冲 |
+
+换模式时 `bpm` 每步朝目标挪 1.2%，是滑过去而不是跳过去。
+
+**音量设置存哪**：见 5.7。
+
+### 5.7 音量持久化（prefs.go）
+
+**踩坑：光靠 localStorage 不够。** WebView2 每次启动随机分配端口，浏览器把 `127.0.0.1:61862` 和 `127.0.0.1:52341` 当成两个不同来源，localStorage 因此每次启动都归零——用户静音过一次，下次打开又是满音量（或者反过来）。
+
+所以真正的持久值写在 `%LOCALAPPDATA%\Cabo\prefs.json`，走 `GET/POST /api/prefs`。前端仍留一份 localStorage 作为首屏的即时缓存，但**服务端返回后会覆盖它**（`prefsTouched` 标志防止用户刚拖完滑块就被远端旧值刷回去）。
+
+写文件前 `io.LimitReader(4096)` + 数值夹紧到 0–1，路径不接受外部输入。
+
 ---
 
 ## 六、未完成 / 可以继续做的
@@ -226,7 +298,6 @@ setView(v, { skipCabo: true }); // 再切到新状态
 |---|---|---|
 | 中 | **应用图标** | 目前是 Windows 默认 exe 图标。`windres` 在 `E:\MinGW\bin\windres`，做法：生成 `.ico` → 写 `cabo.rc`（`1 ICON "cabo.ico"`）→ `windres -O coff -i cabo.rc -o rsrc_windows_amd64.syso` → 放进 `cmd/cabo/` 后重新 build。图标建议用珊瑚底 + 白色菱形（和牌背同一套语言） |
 | 中 | 热座模式 | 现在只有「人 vs AI」。加 2–4 人同机轮流需要「传递设备」的遮挡界面 |
-| 低 | 音效 | 翻牌、换牌、错误、CABO 喊声。代码里没有音频层，需要新加 |
 | 低 | 联机对战 | 现在 `server.Server` 只维护一局全局游戏，多标签页会互相干扰。要做联机得改成房间模型 |
 | 低 | Burn 抢牌 | 线上版机制，需要并发仲裁，属于第二阶段 |
 | 低 | 神风特攻队 | QQKK 彩蛋，加在 `endRound()` 里即可 |
@@ -296,12 +367,33 @@ setView(v, { skipCabo: true }); // 再切到新状态
 
 ---
 
-## 八、下一步怎么接
+## 八、分发时会被 SmartScreen 拦
+
+双击 exe 可能弹「Windows 已保护你的电脑 / 发布者：发布者未知」。**这不是病毒，是 exe 没有代码签名、也没有信誉积累**，Windows SmartScreen 对「未知发布者」的默认行为。
+
+已确认的事实（2026-10-30 查）：
+- 文件没有 `Zone.Identifier` 数据流（不是"来自网络"的锁定问题）
+- `Get-AuthenticodeSignature` 返回 `NotSigned`
+- Smart App Control 为 `Off`，不是它在拦
+- `HKCU\...\AppHost\EnableWebContentEvaluation` 未设置（默认开启「检查应用和文件」）
+
+处理办法，按侵入性排序：
+
+1. **单次放行**：弹窗里点「仍要运行」。
+2. **关掉这个用户的 SmartScreen 应用检查**（无管理员权限）：
+   `Set-ItemProperty 'HKCU://Software//Microsoft//Windows//CurrentVersion//AppHost' -Name EnableWebContentEvaluation -Value 0`
+   代价是下载来的未知程序也不再提示，安全等级下降。
+3. **Defender 排除项**：只对病毒扫描有效，**对 SmartScreen 无效**，别搞混。
+4. **根治**：买代码签名证书（OV/EV）。EV 证书能立刻建立信誉；OV 证书首次仍可能提示，要等信誉积累。自签名证书没用——不在信任链里，反而更麻烦。
+
+如果只是自己玩，方案 1 或 2 就够了。
+
+## 九、下一步怎么接
 
 如果用户说「继续」：
 
 1. 先 `go test ./...` 确认基线是绿的。
-2. 问清楚要做什么。最可能的三个方向：加图标、加热座模式、加音效。
+2. 问清楚要做什么。剩下的方向：热座模式、联机、Burn 抢牌、神风特攻队彩蛋。（图标和音效已完成。）
 3. 改引擎的话，**先看 `internal/engine/rules.go` 的 `Apply`**，那是唯一的规则入口；改完必须跑 `internal/ai` 的守恒测试。
 4. 改界面的活基本都在 `internal/server/static/` 三个文件里，改完 `go build` 重新出 exe（静态资源是编译时嵌入的，不重新 build 看不到变化）。
 5. 视觉上保持浅色系和「珊瑚橘 + 白色卡片」这套语言，别再回到深色。

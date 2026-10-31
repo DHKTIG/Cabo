@@ -44,7 +44,7 @@ func TestStaticAssetsEmbedded(t *testing.T) {
 	srv := httptest.NewServer(New())
 	defer srv.Close()
 
-	for _, p := range []string{"/", "/style.css", "/app.js"} {
+	for _, p := range []string{"/", "/style.css", "/app.js", "/audio.js"} {
 		resp, err := http.Get(srv.URL + p)
 		if err != nil {
 			t.Fatal(err)
@@ -56,6 +56,53 @@ func TestStaticAssetsEmbedded(t *testing.T) {
 		if resp.ContentLength == 0 {
 			t.Fatalf("%s 内容为空", p)
 		}
+	}
+}
+
+// TestPrefsRoundTrip 音量设置要能跨启动保留：写入后再读回应是同一组值。
+func TestPrefsRoundTrip(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	srv := httptest.NewServer(New())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/prefs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var empty struct {
+		OK    bool      `json:"ok"`
+		Prefs *prefsDoc `json:"prefs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&empty); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if !empty.OK || empty.Prefs != nil {
+		t.Fatalf("首次读取应返回 ok 且无设置，实际 %+v", empty)
+	}
+
+	body, _ := json.Marshal(prefsDoc{Music: 0.3, Sfx: 1.7, Muted: true})
+	post, err := http.Post(srv.URL+"/api/prefs", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.Body.Close()
+
+	resp, err = http.Get(srv.URL + "/api/prefs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got struct {
+		OK    bool     `json:"ok"`
+		Prefs prefsDoc `json:"prefs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	// Sfx 越界应被夹到 1
+	if !got.OK || got.Prefs != (prefsDoc{Music: 0.3, Sfx: 1, Muted: true}) {
+		t.Fatalf("设置未正确保存/夹紧，实际 %+v", got.Prefs)
 	}
 }
 

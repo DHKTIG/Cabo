@@ -1,0 +1,1445 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #FBF6EC;
+  --surface: #FFFFFF;
+  --surface-2: #FDFAF4;
+
+  --ink: #2F2A24;
+  --ink-2: #7A7166;
+  --ink-3: #A79C8E;
+
+  --line: rgba(47, 42, 36, 0.08);
+  --line-2: rgba(47, 42, 36, 0.16);
+
+  --coral: #FF7A59;
+  --coral-2: #FF9C7E;
+  --teal: #1FA79A;
+  --violet: #8B6FE8;
+  --amber: #E8A33D;
+  --sun: #FFC94D;
+
+  --t-zero: #E8A33D;
+  --t-low: #93A1B5;
+  --t-peek: #1FA79A;
+  --t-spy: #8B6FE8;
+  --t-swap: #F2823C;
+  --t-high: #E8544A;
+
+  /* 运动语言：整套动效共用这组缓动，改一处全站跟着变。
+     spring 带回弹，用来表现「纸牌有重量地落定」；
+     之前所有动画都是同一个 cubic-bezier(.2,.8,.3,1)，观感偏「滑」而不偏「弹」。 */
+  --e-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --e-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --e-spring: cubic-bezier(0.34, 1.46, 0.64, 1);
+  --e-swing: cubic-bezier(0.16, 1.05, 0.3, 1);
+  --e-in: cubic-bezier(0.55, 0, 0.68, 0.19);
+
+  --t-fast: 0.16s;
+  --t-mid: 0.34s;
+  --t-slow: 0.62s;
+
+  /* 卡牌尺寸跟随窗口高度缩放，保证小窗口下按钮不被挤出去 */
+  --hand-w: clamp(58px, 11.2vh, 96px);
+  --seat-w: clamp(42px, 7.4vh, 62px);
+  --pile-w: clamp(52px, 7.8vh, 66px);
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  background: var(--bg);
+}
+
+/* ---------- 背景装饰 ---------- */
+
+.bg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.9;
+}
+
+.b1 {
+  width: 640px; height: 640px;
+  left: -180px; top: -220px;
+  background: radial-gradient(circle, rgba(255, 176, 140, 0.75), transparent 68%);
+  animation: drift1 26s ease-in-out infinite alternate;
+}
+
+.b2 {
+  width: 560px; height: 560px;
+  right: -160px; top: -140px;
+  background: radial-gradient(circle, rgba(140, 220, 205, 0.7), transparent 68%);
+  animation: drift2 30s ease-in-out infinite alternate;
+}
+
+.b3 {
+  width: 720px; height: 720px;
+  left: 42%; bottom: -380px;
+  background: radial-gradient(circle, rgba(190, 172, 244, 0.6), transparent 68%);
+  animation: drift3 34s ease-in-out infinite alternate;
+}
+
+@keyframes drift1 {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(40px, 30px, 0) scale(1.1); }
+}
+@keyframes drift2 {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(-40px, 40px, 0) scale(1.08); }
+}
+@keyframes drift3 {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(30px, -30px, 0) scale(1.06); }
+}
+
+.speck {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 122, 89, 0.22);
+  animation: bob 9s ease-in-out infinite;
+}
+
+/* 每颗用不同的周期和幅度，否则六颗同频浮动一眼就能看出是同一个循环 */
+.s1 { width: 10px; height: 10px; left: 8%; top: 24%; animation-duration: 11s; }
+.s2 { width: 7px; height: 7px; left: 18%; top: 68%; background: rgba(31, 167, 154, 0.28); animation-duration: 8.4s; animation-delay: 1.4s; }
+.s3 { width: 12px; height: 12px; right: 10%; top: 32%; background: rgba(139, 111, 232, 0.22); animation-duration: 13.5s; animation-delay: 0.7s; }
+.s4 { width: 8px; height: 8px; right: 20%; bottom: 22%; animation-duration: 9.6s; animation-delay: 2.1s; }
+.s5 { width: 6px; height: 6px; left: 30%; top: 12%; background: rgba(232, 163, 61, 0.3); animation-duration: 7.8s; animation-delay: 1.1s; }
+.s6 { width: 9px; height: 9px; right: 32%; top: 8%; background: rgba(31, 167, 154, 0.22); animation-duration: 12.2s; animation-delay: 2.6s; }
+
+@keyframes bob {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
+  33% { transform: translate3d(9px, -13px, 0) scale(1.14); opacity: 1; }
+  66% { transform: translate3d(-7px, -6px, 0) scale(0.92); opacity: 0.6; }
+}
+
+.hidden { display: none !important; }
+
+#app {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: clamp(46px, 6.2vh, 56px) 1fr;
+  height: 100vh;
+}
+
+/* ---------- 顶栏 ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.logo {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 5px;
+  color: var(--coral);
+  margin-right: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.turn-chip:empty { display: none; }
+
+.turn-chip .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pc, var(--coral));
+  margin: 0;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.turn-chip.swap { animation: chipSwap 0.5s var(--e-swing); }
+
+@keyframes chipSwap {
+  0% { opacity: 0; transform: translateY(7px) scale(0.9); }
+  58% { opacity: 1; transform: translateY(-2px) scale(1.05); }
+  100% { opacity: 1; transform: none; }
+}
+
+.spacer { flex: 1; }
+
+.ghost {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 11.5px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.ghost:hover { color: var(--ink); border-color: var(--line-2); transform: translateY(-1px); }
+
+/* ---------- 桌面 ---------- */
+
+.table {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(84px, 1fr) auto auto;
+  gap: clamp(4px, 1vh, 10px);
+  padding: clamp(10px, 2.2vh, 20px) 26px clamp(8px, 1.8vh, 20px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.seats {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.seat {
+  --pc: var(--coral);
+  --pc-soft: #FFE9E2;
+  position: relative;
+  padding: clamp(7px, 1.2vh, 11px) 14px clamp(8px, 1.3vh, 12px);
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 14px rgba(47, 42, 36, 0.055);
+  transition: box-shadow var(--t-slow) var(--e-out), transform var(--t-slow) var(--e-spring), border-color var(--t-slow);
+}
+
+.seat.active {
+  border-color: var(--pc);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(47, 42, 36, 0.1);
+}
+
+/* 呼吸光和 receive 光晕分在两个伪元素上。
+   原先两者都写 .seat { animation: … }， receive 会把 active 的呼吸动画直接顶掉。 */
+.seat.active::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: seatBreath 2.4s ease-in-out infinite;
+}
+
+@keyframes seatBreath {
+  0%, 100% { box-shadow: 0 0 0 3px var(--pc-soft); }
+  50% { box-shadow: 0 0 0 6px var(--pc-soft), 0 0 20px 3px var(--pc-soft); }
+}
+
+.seat.caller { border-color: var(--t-high); }
+.seat.caller::before { animation: none; box-shadow: 0 0 0 3px rgba(232, 84, 74, 0.18); }
+
+.seat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: clamp(4px, 0.9vh, 7px);
+}
+
+.seat-id { display: flex; align-items: center; gap: 8px; }
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pc);
+  background: var(--pc-soft);
+  box-shadow: inset 0 0 0 1.5px var(--pc);
+  flex-shrink: 0;
+}
+
+.seat-name {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.seat-score {
+  font-size: 12px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.seat-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(47, 42, 36, 0.07);
+  overflow: hidden;
+  margin-bottom: clamp(5px, 1.1vh, 10px);
+}
+
+.seat-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--pc);
+  transition: width 0.6s var(--e-out);
+}
+
+.seat-hand { display: flex; gap: 7px; }
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pc, var(--coral));
+  margin-right: 6px;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+
+/* ---------- 中间牌堆 ---------- */
+
+.middle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  position: relative;
+}
+
+.middle::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(64vw, 640px);
+  height: min(36vh, 270px);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 72%);
+  border: 1px dashed rgba(47, 42, 36, 0.07);
+  pointer-events: none;
+}
+
+.pile { display: flex; flex-direction: column; align-items: center; gap: 9px; position: relative; }
+
+.pile-label {
+  font-size: 10.5px;
+  letter-spacing: 1.2px;
+  color: var(--ink-3);
+}
+.pile-label b { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.deck-stack {
+  position: relative;
+  width: var(--pile-w);
+  height: calc(var(--pile-w) * 1.42);
+}
+
+.deck-stack i {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.6), transparent 58%),
+    repeating-linear-gradient(45deg, #FFE4D6 0 6px, #FFD3BE 6px 12px);
+  border: 1px solid rgba(255, 122, 89, 0.28);
+  box-shadow: 0 6px 16px rgba(47, 42, 36, 0.12);
+}
+
+.deck-stack i:nth-child(1) { transform: translate(-5px, -5px) rotate(-4deg); opacity: 0.55; }
+.deck-stack i:nth-child(2) { transform: translate(-2px, -2px) rotate(-2deg); opacity: 0.8; }
+.deck-stack.bump { animation: bump 0.46s var(--e-swing); }
+
+/* 压扁再弹回，比单纯 scale 更像一叠纸牌被拍了一下 */
+@keyframes bump {
+  0% { transform: translateY(0) scale(1, 1); }
+  26% { transform: translateY(3px) scale(1.1, 0.9); }
+  58% { transform: translateY(-4px) scale(0.96, 1.06); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+
+.pending-slot {
+  min-width: 120px;
+  min-height: calc(var(--hand-w) * 1.42 + 12px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.pending-hint {
+  font-size: 10.5px;
+  letter-spacing: 2px;
+  color: var(--coral);
+  font-weight: 600;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.discard-holder {
+  position: relative;
+  width: var(--pile-w);
+  height: calc(var(--pile-w) * 1.42);
+  border-radius: 10px;
+  border: 1px dashed rgba(47, 42, 36, 0.14);
+  background: rgba(255, 255, 255, 0.4);
+  display: grid;
+  place-items: center;
+}
+
+.discard-holder::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* 冲击环走 ::after、frame 只做轻微下沉；
+   新牌落下的动画留给 .card.dropIn，三者不抢同一个 transform。 */
+.discard-holder.landing { animation: landDip 0.36s var(--e-out); }
+
+@keyframes landDip {
+  0% { transform: translateY(0) scale(1, 1); }
+  32% { transform: translateY(2px) scale(1.06, 0.93); }
+  100% { transform: none; }
+}
+
+.discard-holder.landing::after { animation: landRing 0.66s var(--e-out); }
+
+@keyframes landRing {
+  0% { opacity: 0.5; box-shadow: 0 0 0 0 var(--coral); }
+  100% { opacity: 0; box-shadow: 0 0 0 22px var(--coral); }
+}
+
+.discard-holder .card { --w: var(--pile-w); }
+
+/* ---------- 自己 ---------- */
+
+.table > .me {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(6px, 1.4vh, 12px);
+}
+
+.me-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  padding: 6px 14px 6px 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 3px 10px rgba(47, 42, 36, 0.05);
+}
+
+.me-bar b { color: var(--ink); font-weight: 700; }
+
+.me-progress {
+  width: 64px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(47, 42, 36, 0.07);
+  overflow: hidden;
+}
+
+.me-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--coral);
+  transition: width 0.6s var(--e-out);
+}
+
+.turn-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--coral);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  animation: pulse 2.2s ease-in-out infinite;
+}
+
+.turn-badge.cabo { background: var(--t-high); }
+
+.hand {
+  display: flex;
+  gap: 13px;
+  justify-content: center;
+  align-items: flex-end;
+  min-height: calc(var(--hand-w) * 1.42 + 6px);
+  perspective: 1100px;
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 11px;
+  min-height: clamp(40px, 5vh, 46px);
+  flex-wrap: wrap;
+}
+
+/* ---------- 卡牌 ---------- */
+
+.card {
+  --w: var(--hand-w);
+  width: var(--w);
+  height: calc(var(--w) * 1.42);
+  position: relative;
+  border-radius: 12px;
+  flex: 0 0 auto;
+  transition: transform 0.22s var(--e-out), box-shadow 0.22s;
+  will-change: transform;
+}
+
+.card.small { --w: var(--seat-w); border-radius: 10px; }
+.card.small .rank { font-size: 27px; }
+.card.small .pw { width: 17px; height: 17px; font-size: 9.5px; top: 5px; right: 5px; border-radius: 5px; }
+.card.small .front {
+  background:
+    linear-gradient(90deg, var(--tone, var(--t-low)) 0 4px, transparent 4px),
+    #FFFFFF;
+}
+.card.small[data-tone="zero"] .front {
+  background:
+    linear-gradient(90deg, #D9A24A 0 4px, transparent 4px),
+    linear-gradient(158deg, #FFE9AE, #FFC94D 52%, #F0AE33);
+}
+
+.card .face {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  backface-visibility: hidden;
+}
+
+.card .front {
+  background:
+    linear-gradient(90deg, var(--tone, var(--t-low)) 0 6px, transparent 6px),
+    #FFFFFF;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  box-shadow: 0 8px 20px rgba(47, 42, 36, 0.13), inset 0 0 0 1px rgba(47, 42, 36, 0.05);
+}
+
+.card .front::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(47, 42, 36, 0.06) 1px, transparent 1px);
+  background-size: 8px 8px;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.card .rank {
+  position: relative;
+  z-index: 1;
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -2px;
+  font-variant-numeric: tabular-nums;
+  transform: translateX(3px);
+}
+
+.card .pw {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--tone);
+  color: #fff;
+  z-index: 2;
+}
+
+.card .back {
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.6), transparent 58%),
+    repeating-linear-gradient(45deg, #FFE4D6 0 6px, #FFD3BE 6px 12px);
+  border: 1px solid rgba(255, 122, 89, 0.28);
+  box-shadow: 0 6px 16px rgba(47, 42, 36, 0.12);
+  overflow: hidden;
+}
+
+.card .back::before,
+.card .back::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  border-radius: 3px;
+}
+.card .back::before { width: 44%; height: 44%; }
+.card .back::after { width: 20%; height: 20%; }
+
+.card[data-tone="zero"] { --tone: var(--t-zero); }
+.card[data-tone="low"] { --tone: var(--t-low); }
+.card[data-tone="peek"] { --tone: var(--t-peek); }
+.card[data-tone="spy"] { --tone: var(--t-spy); }
+.card[data-tone="swap"] { --tone: var(--t-swap); }
+.card[data-tone="high"] { --tone: var(--t-high); }
+
+.card[data-tone="zero"] .front {
+  background:
+    linear-gradient(90deg, #D9A24A 0 6px, transparent 6px),
+    linear-gradient(158deg, #FFE9AE, #FFC94D 52%, #F0AE33);
+}
+.card[data-tone="zero"] .rank { font-size: 46px; }
+.card[data-tone="high"] .rank { color: var(--t-high); }
+
+.card.clickable { cursor: pointer; }
+.card.clickable:hover {
+  transform: translateY(-11px) rotate(-1.4deg) scale(1.03);
+  box-shadow: 0 18px 30px rgba(47, 42, 36, 0.15), 0 0 0 1px var(--tone, var(--line-2));
+}
+.card.clickable:active { transform: translateY(-5px) scale(0.99); transition-duration: 0.08s; }
+
+.card.picked { transform: translateY(-19px) rotate(1.6deg); }
+.card.picked .front {
+  box-shadow: 0 18px 32px rgba(255, 122, 89, 0.32), inset 0 0 0 2px var(--coral);
+  animation: pickedGlow 1.5s ease-in-out infinite;
+}
+
+/* 选中环挂在 .card 上而不是 .front 上：开局挑 2 张看的时候牌全是背面，
+   那时根本没有 .front 元素，环画在它上面就等于没有。 */
+.card.picked::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 16px;
+  border: 2px solid var(--coral);
+  box-shadow: 0 0 0 4px rgba(255, 122, 89, 0.16);
+  pointer-events: none;
+  animation: pickedRing 1.5s ease-in-out infinite;
+}
+
+@keyframes pickedRing {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.62; transform: scale(1.035); }
+}
+
+@keyframes pickedGlow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.055); }
+}
+
+/* 发牌：从牌堆方向斜着甩进来，落定时轻微过冲——像真的纸牌拍在桌上 */
+.card.enter { animation: cardIn 0.46s var(--e-swing) both; }
+
+@keyframes cardIn {
+  0% {
+    opacity: 0;
+    transform: perspective(760px) translate3d(-14px, -26px, -90px) rotateY(-26deg) rotate(-7deg) scale(0.74);
+  }
+  38% { opacity: 1; }
+  62% {
+    transform: perspective(760px) translate3d(2px, 3px, 0) rotateY(6deg) rotate(2.2deg) scale(1.045);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(760px) translate3d(0, 0, 0) rotateY(0) rotate(0) scale(1);
+  }
+}
+
+/* 翻牌：从正侧面（88°，几乎看不见）扫到正面，再小幅过冲回落。
+   原先从 -104° 起手，等于跳过了「侧成一条线」这个最关键的瞬间，
+   加上牌面全程清晰，看着只是牌在轻微倾斜而不是被翻过来。
+   牌面只有一个 face（暗牌内容根本不下发），做不了真假两面，靠透视+扫光补。 */
+.card.reveal { animation: flipIn 0.56s var(--e-out) both; }
+
+@keyframes flipIn {
+  0% { transform: perspective(520px) rotateY(88deg) scale(0.94); opacity: 0.2; }
+  26% { opacity: 0.6; }
+  62% { transform: perspective(520px) rotateY(-15deg) scale(1.05) translateY(-6px); opacity: 1; }
+  82% { transform: perspective(520px) rotateY(6deg) scale(1.01) translateY(-1px); }
+  100% { transform: perspective(520px) rotateY(0deg) scale(1) translateY(0); opacity: 1; }
+}
+
+.card.reveal .front::before {
+  content: "";
+  position: absolute;
+  inset: -40% -60%;
+  background: linear-gradient(112deg, transparent 38%, rgba(255, 255, 255, 0.92) 50%, transparent 62%);
+  transform: translateX(-120%);
+  animation: sheen 0.5s var(--e-out) 0.22s both;
+  pointer-events: none;
+}
+
+@keyframes sheen {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(120%); }
+}
+
+.card.dropIn { animation: dropIn 0.44s var(--e-swing) both; }
+
+@keyframes dropIn {
+  0% { opacity: 0; transform: translateY(-34px) rotate(9deg) scale(0.82); }
+  55% { opacity: 1; transform: translateY(3px) rotate(-2deg) scale(1.05); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* 被技能指向：光晕用这张牌自己的 --tone，和色条编码对上，
+   看颜色就知道是被「透视」还是「窥探」 */
+.card.hit { animation: hit 0.82s var(--e-out); }
+
+@keyframes hit {
+  0% { transform: none; filter: none; }
+  18% {
+    transform: translateY(-22px) scale(1.17) rotate(-1.8deg);
+    filter: drop-shadow(0 0 20px var(--tone, var(--coral)));
+  }
+  44% { transform: translateY(-8px) scale(1.06) rotate(0.8deg); }
+  68% { transform: translateY(-13px) scale(1.1); filter: drop-shadow(0 0 14px var(--tone, var(--coral))); }
+  100% { transform: none; filter: none; }
+}
+
+.card.flying {
+  position: fixed;
+  margin: 0;
+  z-index: 70;
+  pointer-events: none;
+  will-change: transform, opacity, filter;
+  filter: drop-shadow(0 18px 28px rgba(255, 122, 89, 0.45));
+}
+
+/* ---------- 按钮 ---------- */
+
+.btn {
+  --btn-bg: var(--surface);
+  --btn-bg-hover: #FFFFFF;
+  --btn-bg-active: #F6F1E7;
+  --btn-fg: var(--ink);
+  --btn-border: var(--line-2);
+  --btn-glow: rgba(47, 42, 36, 0.1);
+
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  padding: 12px 24px;
+  border-radius: 14px;
+  border: 1px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  cursor: pointer;
+  box-shadow: 0 4px 12px var(--btn-glow);
+  transition: transform 0.16s var(--e-out), background 0.16s,
+    border-color 0.16s, box-shadow 0.16s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--btn-bg-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px var(--btn-glow);
+}
+
+.btn:active:not(:disabled) {
+  background: var(--btn-bg-active);
+  transform: translateY(1px) scale(0.985);
+  box-shadow: 0 3px 8px var(--btn-glow);
+}
+
+.btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 34%, rgba(255, 255, 255, 0.5) 50%, transparent 66%);
+  transform: translateX(-130%);
+  transition: transform 0.62s ease;
+}
+.btn:hover:not(:disabled)::after { transform: translateX(130%); }
+
+.btn.primary {
+  --btn-bg: linear-gradient(180deg, var(--coral-2), var(--coral));
+  --btn-bg-hover: linear-gradient(180deg, #FFAE92, #FF8767);
+  --btn-bg-active: linear-gradient(180deg, #F06A49, #E85C3B);
+  --btn-fg: #FFFFFF;
+  --btn-border: transparent;
+  --btn-glow: rgba(255, 122, 89, 0.32);
+}
+
+.btn.danger {
+  --btn-bg: linear-gradient(180deg, var(--sun), #FFAE3D);
+  --btn-bg-hover: linear-gradient(180deg, #FFD873, #FFB44F);
+  --btn-bg-active: linear-gradient(180deg, #F0B93A, #E8A02C);
+  --btn-fg: #4A3200;
+  --btn-border: transparent;
+  --btn-glow: rgba(255, 201, 77, 0.4);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--coral);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+/* ---------- 浮动特效 ---------- */
+
+.fx { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+
+.float {
+  position: fixed;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  animation: floatUp 1.15s var(--e-out) forwards;
+}
+
+@keyframes floatUp {
+  0% { opacity: 0; transform: translate(-50%, 4px) scale(0.8); }
+  18% { opacity: 1; transform: translate(-50%, -6px) scale(1.08); }
+  100% { opacity: 0; transform: translate(-50%, -54px) scale(0.96); }
+}
+
+.pill {
+  position: fixed;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 18px rgba(47, 42, 36, 0.14);
+  animation: pillIn 1.7s ease forwards;
+}
+
+@keyframes pillIn {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+  12% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+  22% { transform: translate(-50%, -50%) scale(1); }
+  76% { opacity: 1; transform: translate(-50%, -52%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -78%) scale(0.93); }
+}
+
+/* 喊 CABO：字从散开到聚拢、金橘渐变、双层冲击环，配 full-screen 的那一下闪光 */
+.cabo-banner {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  font-size: clamp(46px, 10vw, 110px);
+  font-weight: 800;
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+  background: linear-gradient(172deg, #FFEFB8 4%, #FFC94D 34%, #FF9E6B 66%, #FF7A59 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 10px 26px rgba(255, 122, 89, 0.4));
+  animation: caboIn 2s var(--e-swing) forwards;
+}
+
+.cabo-banner::before,
+.cabo-banner::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1.1em;
+  height: 1.1em;
+  margin: -0.55em 0 0 -0.55em;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 201, 77, 0.8);
+  opacity: 0;
+  pointer-events: none;
+}
+.cabo-banner::before { animation: caboRing 1.15s var(--e-out) 0.1s; }
+.cabo-banner::after { animation: caboRing 1.45s var(--e-out) 0.32s; }
+
+@keyframes caboRing {
+  0% { opacity: 0.75; transform: scale(0.35); }
+  100% { opacity: 0; transform: scale(10); }
+}
+
+@keyframes caboIn {
+  0% {
+    opacity: 0;
+    letter-spacing: 1em;
+    text-indent: 1em;
+    transform: translate(-50%, -50%) scale(2.2);
+    filter: blur(14px) brightness(1.7) drop-shadow(0 10px 26px rgba(255, 122, 89, 0.4));
+  }
+  15% {
+    opacity: 1;
+    letter-spacing: 0.44em;
+    text-indent: 0.44em;
+    transform: translate(-50%, -50%) scale(0.94);
+    filter: blur(0) brightness(1.2) drop-shadow(0 10px 26px rgba(255, 122, 89, 0.4));
+  }
+  24% { transform: translate(-50%, -50%) scale(1.05); }
+  34% { transform: translate(-50%, -50%) scale(1); }
+  74% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.14);
+    filter: blur(4px) drop-shadow(0 10px 26px rgba(255, 122, 89, 0.4));
+  }
+}
+
+.flash {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 201, 77, 0.34), transparent 58%),
+    radial-gradient(circle at 50% 42%, transparent 52%, rgba(255, 122, 89, 0.14) 72%, transparent 86%);
+  animation: flashOut 1.15s var(--e-out) forwards;
+}
+
+@keyframes flashOut {
+  0% { opacity: 0; transform: scale(0.55); }
+  16% { opacity: 1; transform: scale(1.03); }
+  100% { opacity: 0; transform: scale(1.2); }
+}
+
+/* ---------- 对手思考态 ---------- */
+
+.think {
+  display: none;
+  gap: 4px;
+  align-items: center;
+  margin-left: 5px;
+}
+
+.seat.thinking .think { display: inline-flex; }
+
+.think i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pc);
+  animation: think 1.05s var(--e-soft) infinite;
+}
+
+.think i:nth-child(2) { animation-delay: 0.14s; }
+.think i:nth-child(3) { animation-delay: 0.28s; }
+
+/* 两段式抛物线（升-缩-降）比单纯上下平移更像在琢磨东西 */
+@keyframes think {
+  0%, 100% { opacity: 0.25; transform: translateY(0) scale(0.85); }
+  35% { opacity: 1; transform: translateY(-4px) scale(1.15); }
+  60% { opacity: 0.8; transform: translateY(-1.5px) scale(1); }
+}
+
+.seat.receive::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: receiveRing 0.8s var(--e-out);
+}
+
+@keyframes receiveRing {
+  0% { box-shadow: 0 0 0 0 var(--pc); opacity: 0.5; }
+  100% { box-shadow: 0 0 0 18px var(--pc); opacity: 0; }
+}
+
+/* ---------- 弹层 ---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(251, 246, 236, 0.85);
+  backdrop-filter: blur(10px);
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* .hidden 是 display:none，退场必须先播完动画再由 JS 挂上 */
+.overlay.leaving { animation: overlayOut 0.34s var(--e-in) forwards; pointer-events: none; }
+.overlay.leaving .panel { animation: panelOut 0.34s var(--e-in) forwards; }
+
+@keyframes overlayOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes panelOut {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-16px) scale(0.955); }
+}
+
+.panel {
+  width: 400px;
+  max-width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 34px 34px 28px;
+  border-radius: 26px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 60px rgba(47, 42, 36, 0.14);
+  animation: panelIn 0.42s var(--e-swing);
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(18px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+.brand-mark { text-align: center; margin-bottom: 26px; }
+
+.brand-cabo {
+  display: block;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 12px;
+  color: var(--coral);
+  text-indent: 12px;
+}
+
+.brand-sub {
+  display: block;
+  margin-top: 9px;
+  font-size: 11.5px;
+  letter-spacing: 1.2px;
+  color: var(--ink-3);
+}
+
+.field { display: block; margin-bottom: 18px; }
+
+.field > span {
+  display: block;
+  font-size: 10.5px;
+  letter-spacing: 1.2px;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+}
+
+.field input {
+  width: 100%;
+  padding: 11px 13px;
+  border-radius: 12px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+.field input:focus { border-color: var(--coral); background: #fff; }
+
+.segmented { display: flex; gap: 9px; }
+
+.segmented button {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 12px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.segmented button:hover { border-color: var(--ink-3); color: var(--ink); }
+.segmented button.on {
+  background: #FFE9E2;
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+.panel .primary {
+  width: 100%;
+  padding: 14px;
+  margin-top: 4px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--coral-2), var(--coral));
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(255, 122, 89, 0.3);
+  transition: transform 0.16s, box-shadow 0.16s;
+}
+.panel .primary:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(255, 122, 89, 0.38); }
+.panel .primary:active { transform: translateY(0) scale(0.99); }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--ink-2);
+}
+
+.legend-item i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--tone);
+}
+
+.legend-item[data-tone="zero"] { --tone: var(--t-zero); }
+.legend-item[data-tone="low"] { --tone: var(--t-low); }
+.legend-item[data-tone="peek"] { --tone: var(--t-peek); }
+.legend-item[data-tone="spy"] { --tone: var(--t-spy); }
+.legend-item[data-tone="swap"] { --tone: var(--t-swap); }
+.legend-item[data-tone="high"] { --tone: var(--t-high); }
+
+.goal {
+  margin-top: 18px;
+  padding: 13px 15px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #FFF4EF, #FFEAE1);
+  border: 1px solid rgba(255, 122, 89, 0.24);
+}
+
+.goal-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--coral);
+  margin-bottom: 8px;
+}
+
+.goal p {
+  font-size: 12px;
+  line-height: 1.72;
+  color: var(--ink-2);
+}
+
+.goal p strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.goal .goal-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.rules { margin-top: 14px; font-size: 11.5px; color: var(--ink-2); }
+.rules summary { cursor: pointer; color: var(--ink-2); font-weight: 600; }
+.rules ul { margin: 11px 0 0 16px; line-height: 1.95; }
+
+/* ---------- 结算 ---------- */
+
+.result-title {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--coral);
+}
+.result-sub {
+  text-align: center;
+  margin: 8px 0 4px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.6px;
+}
+
+.score-list { margin: 18px 0 20px; }
+
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  animation: rowIn 0.46s var(--e-swing) both;
+}
+
+@keyframes rowIn {
+  from { opacity: 0; transform: translateX(-16px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+.score-row.me { color: var(--coral); display: flex; flex-direction: row; font-weight: 600; }
+.score-row .nm { flex: 1; }
+.score-row .gain {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  min-width: 42px;
+  text-align: right;
+  animation: gainPop 0.5s var(--e-swing) 0.22s both;
+}
+
+/* 加分数字单独弹一下，结算时视线自然落到这一列 */
+@keyframes gainPop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.8); }
+  55% { opacity: 1; transform: translateY(-2px) scale(1.22); }
+  100% { opacity: 1; transform: none; }
+}
+.score-row .total { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 46px; text-align: right; }
+.score-row .bar {
+  width: 54px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(47, 42, 36, 0.07);
+  overflow: hidden;
+}
+.score-row .bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--coral);
+  transform-origin: left center;
+  animation: growBar 0.9s var(--e-out) both;
+}
+
+@keyframes growBar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* ---------- 玩家配色 ---------- */
+
+.p0 { --pc: #FF7A59; --pc-soft: #FFE9E2; }
+.p1 { --pc: #1FA79A; --pc-soft: #DDF4F0; }
+.p2 { --pc: #8B6FE8; --pc-soft: #EDE7FD; }
+.p3 { --pc: #E8A33D; --pc-soft: #FDF0D8; }
+
+/* 窗口较矮时整体压缩，保证底部的操作按钮始终可见 */
+@media (max-height: 620px) {
+  :root {
+    --hand-w: 58px;
+    --seat-w: 40px;
+    --pile-w: 48px;
+  }
+  .table { padding: 8px 18px; gap: 4px; }
+  .seat-progress { margin-bottom: 6px; }
+  .pending-slot { min-height: 86px; }
+  .middle { gap: 30px; }
+  .actions { min-height: 38px; }
+  .hint { font-size: 11px; }
+}
+
+/* ---------- 音乐与音效控制 ---------- */
+
+.snd-mount { display: inline-flex; }
+
+.snd { position: relative; display: inline-flex; }
+
+.snd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+}
+.snd-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.snd-btn .ic-cone { fill: currentColor; stroke: none; }
+.snd-btn .ic-x { display: none; }
+.snd-btn.on { color: var(--ink); border-color: var(--line-2); }
+.snd-btn.muted { color: var(--coral); border-color: rgba(255, 122, 89, 0.42); }
+.snd-btn.muted .ic-w1,
+.snd-btn.muted .ic-w2 { display: none; }
+.snd-btn.muted .ic-x { display: block; }
+
+/* 挂到 body 上、用 fixed 定位，坐标由 audio.js 的 placePop() 算：
+   留在 .topbar 里会被 backdrop-filter 造出的层叠上下文困住（弹层被后面的牌桌盖住），
+   留在首页面板里又会被 overflow 裁掉。
+   显隐用 visibility+opacity 而不是 hidden/display:none：元素常驻渲染树，
+   切换时才不会有「首帧不重绘」的问题，也顺带拿到淡入。 */
+.snd-pop {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 95;
+  width: 196px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px;
+  border-radius: 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 32px rgba(47, 42, 36, 0.13);
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.16s var(--e-out), transform 0.2s var(--e-spring), visibility 0s linear 0.2s;
+}
+
+.snd-pop.open {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition: opacity 0.16s var(--e-out), transform 0.2s var(--e-spring);
+}
+
+.snd-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 32px;
+  align-items: center;
+  gap: 9px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.snd-row b {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.snd-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: #EFE6D6;
+  cursor: pointer;
+}
+.snd-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--coral);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 5px rgba(255, 122, 89, 0.45);
+  transition: transform 0.15s;
+}
+.snd-range:hover::-webkit-slider-thumb { transform: scale(1.16); }
+.snd-range::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--coral);
+  border: 2px solid #fff;
+}
+
+.snd-mute {
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.snd-mute:hover { color: var(--ink); border-color: var(--line-2); }
+
+.snd-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+.snd-tip { font-size: 11px; color: var(--ink-3); }
+
+@media (max-width: 900px) {
+  .table { padding: 12px 14px 16px; }
+  .middle { gap: 30px; }
+  .card { --w: 68px; }
+  .card.small { --w: 46px; }
+  .card .rank { font-size: 32px; }
+  .seats { gap: 9px; }
+  .me-progress { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
