@@ -47,7 +47,7 @@ jobs:
       - name: build
         run: go build -ldflags="-s -w -H windowsgui" -o cabo.exe ./cmd/cabo
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cabo-windows-amd64
           path: cabo.exe
