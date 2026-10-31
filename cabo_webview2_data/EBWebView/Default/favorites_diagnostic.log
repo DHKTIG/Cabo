@@ -57,3 +57,33 @@
 2026-10-30 15:33:12.163: [INFO] BookmarksLoadDropped droppedNodes=0
 2026-10-30 15:33:12.163: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
 2026-10-30 15:33:26.671: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-31 03:40:47.145: [INFO] CurrentProfilePath: E:\Cabo\cabo_webview2_data\EBWebView\Default
+2026-10-31 03:40:47.145: [INFO] Profiles total count: 1
+2026-10-31 03:40:47.145: [INFO] Profile: name=用户配置 1 path=E:\Cabo\cabo_webview2_data\EBWebView\Default lastActive=2026-10-30T15:33:23.316Z
+2026-10-31 03:40:47.145: [INFO] LastUsedProfileDir: E:\Cabo\cabo_webview2_data\EBWebView\Default
+2026-10-31 03:40:47.145: [INFO] MostRecentlyActiveProfile: name=用户配置 1 path=E:\Cabo\cabo_webview2_data\EBWebView\Default lastActive=2026-10-30T15:33:23.316Z
+2026-10-31 03:40:47.145: [INFO] OnDoneLoading sync enabled: 0
+2026-10-31 03:40:47.145: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-31 03:40:47.145: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-31 03:40:47.145: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-31 03:41:05.139: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-31 03:55:15.608: [INFO] CurrentProfilePath: E:\Cabo\cabo_webview2_data\EBWebView\Default
+2026-10-31 03:55:15.608: [INFO] Profiles total count: 1
+2026-10-31 03:55:15.608: [INFO] Profile: name=用户配置 1 path=E:\Cabo\cabo_webview2_data\EBWebView\Default lastActive=2026-10-31T03:40:47.177Z
+2026-10-31 03:55:15.608: [INFO] LastUsedProfileDir: E:\Cabo\cabo_webview2_data\EBWebView\Default
+2026-10-31 03:55:15.608: [INFO] MostRecentlyActiveProfile: name=用户配置 1 path=E:\Cabo\cabo_webview2_data\EBWebView\Default lastActive=2026-10-31T03:40:47.177Z
+2026-10-31 03:55:15.608: [INFO] OnDoneLoading sync enabled: 0
+2026-10-31 03:55:15.608: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-31 03:55:15.608: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-31 03:55:15.608: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-31 03:55:48.948: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-31 03:56:53.820: [INFO] CurrentProfilePath: E:\Cabo\cabo_webview2_data\EBWebView\Default
+2026-10-31 03:56:53.820: [INFO] Profiles total count: 1
+2026-10-31 03:56:53.820: [INFO] Profile: name=用户配置 1 path=E:\Cabo\cabo_webview2_data\EBWebView\Default lastActive=2026-10-31T03:55:15.642Z
+2026-10-31 03:56:53.820: [INFO] LastUsedProfileDir: E:\Cabo\cabo_webview2_data\EBWebView\Default
+2026-10-31 03:56:53.820: [INFO] MostRecentlyActiveProfile: name=用户配置 1 path=E:\Cabo\cabo_webview2_data\EBWebView\Default lastActive=2026-10-31T03:55:15.642Z
+2026-10-31 03:56:53.820: [INFO] OnDoneLoading sync enabled: 0
+2026-10-31 03:56:53.820: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-31 03:56:53.820: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-31 03:56:53.820: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-31 03:58:17.507: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1

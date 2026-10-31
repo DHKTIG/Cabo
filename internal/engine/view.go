@@ -56,6 +56,7 @@ type View struct {
 	Players      []PlayerView `json:"players"`
 	DeckCount    int          `json:"deckCount"`
 	DiscardTop   *CardView    `json:"discardTop"`
+	DiscardUnder []CardView   `json:"discardUnder"`
 	DiscardCount int          `json:"discardCount"`
 	Turn         int          `json:"turn"`
 	Phase        Phase        `json:"phase"`
@@ -86,6 +87,10 @@ func ViewFor(s State, me int) View {
 	if len(s.Discard) > 0 {
 		cv := newCardView(s.Discard[len(s.Discard)-1])
 		v.DiscardTop = &cv
+		// 顶牌之下的最近几张也是公开信息，前端拿去做弃牌扇
+		for i := len(s.Discard) - 2; i >= 0 && len(v.DiscardUnder) < 3; i-- {
+			v.DiscardUnder = append(v.DiscardUnder, newCardView(s.Discard[i]))
+		}
 	}
 	if s.Pending != nil && s.Turn == me {
 		cv := newCardView(*s.Pending)

@@ -65,6 +65,50 @@ body {
   z-index: 0;
 }
 
+/* 菱形暗纹：和牌背是同一套语言，只在外围浮现，中间留给牌桌 */
+.bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 122, 89, 0.055) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(-45deg, rgba(255, 122, 89, 0.055) 0 1px, transparent 1px 24px);
+  -webkit-mask-image: radial-gradient(ellipse 70% 62% at 50% 46%, transparent 34%, #000 92%);
+  mask-image: radial-gradient(ellipse 70% 62% at 50% 46%, transparent 34%, #000 92%);
+}
+
+/* 极慢漂移的牌背剪影，让背景有「这是一张牌桌」的暗示而不是纯色渐变 */
+.ghost-card {
+  position: absolute;
+  width: 120px;
+  height: 170px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.5), transparent 58%),
+    repeating-linear-gradient(45deg, rgba(255, 228, 214, 0.5) 0 7px, rgba(255, 211, 190, 0.5) 7px 14px);
+  border: 1px solid rgba(255, 122, 89, 0.14);
+  opacity: 0.5;
+}
+.ghost-card::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44%;
+  height: 44%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+}
+.g1 { left: 6%; top: 12%; transform: rotate(-14deg); animation: driftCard 34s ease-in-out infinite alternate; }
+.g2 { right: 8%; top: 56%; width: 96px; height: 136px; transform: rotate(11deg); animation: driftCard 41s ease-in-out infinite alternate-reverse; }
+.g3 { left: 40%; bottom: -6%; width: 84px; height: 119px; transform: rotate(-6deg); opacity: 0.36; animation: driftCard 47s ease-in-out infinite alternate; }
+
+@keyframes driftCard {
+  from { translate: 0 0; rotate: 0deg; }
+  to { translate: 26px -34px; rotate: 7deg; }
+}
+
 .blob {
   position: absolute;
   border-radius: 50%;
@@ -1336,6 +1380,64 @@ body {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* ---------- 页面装饰元素 ---------- */
+
+/* logo 前的菱形标，和牌背中心同一个符号 */
+.logo { display: inline-flex; align-items: center; gap: 8px; }
+.logo-mark {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  background: linear-gradient(140deg, var(--coral-2), var(--coral));
+  transform: rotate(45deg);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85), 0 2px 6px rgba(255, 122, 89, 0.4);
+  flex-shrink: 0;
+}
+
+/* 桌面四角的定位点：让中间的椭圆读起来像一张真的牌桌而不是一个圈 */
+.middle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(64vw, 640px);
+  height: min(36vh, 270px);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background:
+    radial-gradient(3px 3px at 0% 50%, rgba(255, 122, 89, 0.4) 97%, transparent),
+    radial-gradient(3px 3px at 100% 50%, rgba(255, 122, 89, 0.4) 97%, transparent),
+    radial-gradient(3px 3px at 50% 0%, rgba(31, 167, 154, 0.34) 97%, transparent),
+    radial-gradient(3px 3px at 50% 100%, rgba(139, 111, 232, 0.34) 97%, transparent);
+}
+
+/* 牌堆随余量变薄：deckCount 越低，底下两层越收，一眼看出牌快摸完了 */
+.deck-stack[data-tier="mid"] i:nth-child(1) { opacity: 0.3; transform: translate(-3px, -3px) rotate(-3deg); }
+.deck-stack[data-tier="low"] i:nth-child(1) { opacity: 0; }
+.deck-stack[data-tier="low"] i:nth-child(2) { opacity: 0.45; transform: translate(-1px, -1px) rotate(-1deg); }
+.deck-stack[data-tier="empty"] i:nth-child(1),
+.deck-stack[data-tier="empty"] i:nth-child(2) { opacity: 0; }
+.deck-stack[data-tier="empty"] i:nth-child(3) { opacity: 0.5; }
+.deck-stack i { transition: opacity 0.5s var(--e-out), transform 0.5s var(--e-out); }
+
+/* 弃牌堆底下露出的最近几张：既是装饰也是记忆信息 */
+.discard-fan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.discard-fan .card {
+  --w: var(--pile-w);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  opacity: 0.5;
+  filter: saturate(0.75);
+}
+.discard-fan .card:nth-child(1) { transform: translate(-50%, -50%) rotate(-9deg) translate(-7px, 3px) scale(0.97); opacity: 0.42; }
+.discard-fan .card:nth-child(2) { transform: translate(-50%, -50%) rotate(7deg) translate(8px, 4px) scale(0.95); opacity: 0.3; }
+.discard-fan .card:nth-child(3) { transform: translate(-50%, -50%) rotate(-3deg) translate(0, 7px) scale(0.93); opacity: 0.2; }
 
 /* ---------- 音乐与音效控制 ---------- */
 

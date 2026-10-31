@@ -207,13 +207,21 @@ function renderSeats() {
   });
 }
 
+function deckTier(n) {
+  if (n > 30) return 'full';
+  if (n > 18) return 'mid';
+  if (n > 6) return 'low';
+  return 'empty';
+}
+
 function renderMiddle() {
   $('deckCount').textContent = view.deckCount;
   $('discardCount').textContent = view.discardCount;
 
-  if (prevDeckCount !== null && prevDeckCount !== view.deckCount) {
-    const stack = document.querySelector('.deck-stack');
-    if (stack) {
+  const stack = document.querySelector('.deck-stack');
+  if (stack) {
+    stack.dataset.tier = deckTier(view.deckCount);
+    if (prevDeckCount !== null && prevDeckCount !== view.deckCount) {
       stack.classList.remove('bump');
       void stack.offsetWidth;
       stack.classList.add('bump');
@@ -224,6 +232,18 @@ function renderMiddle() {
   const holder = document.querySelector('.discard-holder');
   if (holder) {
     holder.innerHTML = '';
+    if (view.discardUnder && view.discardUnder.length) {
+      const fan = document.createElement('div');
+      fan.className = 'discard-fan';
+      view.discardUnder.forEach((c) => {
+        const f = document.createElement('div');
+        f.className = 'card small';
+        f.dataset.tone = tone(c);
+        f.innerHTML = cardFace(c);
+        fan.appendChild(f);
+      });
+      holder.appendChild(fan);
+    }
     if (view.discardTop) {
       const el = document.createElement('div');
       el.className = 'card';
