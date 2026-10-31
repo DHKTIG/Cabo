@@ -7,9 +7,9 @@ type Power int
 
 const (
 	PowerNone Power = iota
-	PowerPeek // 看自己一张
-	PowerSpy  // 看对手一张
-	PowerSwap // 交换场上任意两张
+	PowerPeek       // 看自己一张
+	PowerSpy        // 看对手一张
+	PowerSwap       // 交换场上任意两张
 )
 
 func (p Power) String() string {
