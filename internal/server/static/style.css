@@ -913,84 +913,130 @@ body {
   100% { opacity: 0; transform: translate(-50%, -78%) scale(0.93); }
 }
 
-/* 喊 CABO：字从散开到聚拢、金橘渐变、双层冲击环，配 full-screen 的那一下闪光 */
-.cabo-banner {
+/* 技能发动的胶囊提示：贴名条右侧，图标带技能色，名字保持正文墨色。
+   回合中的普通动作做成大号裸字会像「大招演出」，反而廉价。 */
+.skill-chip {
   position: fixed;
-  left: 50%;
-  top: 42%;
+  z-index: 66;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 11px 0 4px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--tone-line);
+  box-shadow: 0 6px 18px rgba(47, 42, 36, 0.12);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: chipIn 1.5s var(--e-out) forwards;
+}
+
+.skill-chip[data-tone="peek"] { --tone: var(--t-peek); --tone-tint: rgba(31, 167, 154, 0.13); --tone-line: rgba(31, 167, 154, 0.3); }
+.skill-chip[data-tone="spy"] { --tone: var(--t-spy); --tone-tint: rgba(139, 111, 232, 0.13); --tone-line: rgba(139, 111, 232, 0.3); }
+.skill-chip[data-tone="swap"] { --tone: var(--t-swap); --tone-tint: rgba(242, 130, 60, 0.13); --tone-line: rgba(242, 130, 60, 0.3); }
+
+.sk-ico {
+  width: 21px;
+  height: 21px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: var(--tone-tint, rgba(47, 42, 36, 0.06));
+  color: var(--tone, var(--ink-2));
+  flex-shrink: 0;
+}
+.sk-ico svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sk-txt { display: inline-flex; align-items: baseline; gap: 6px; }
+.sk-txt b {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--ink);
+}
+.sk-txt i {
+  font-size: 11px;
+  font-style: normal;
+  letter-spacing: 0.2px;
+  color: var(--ink-3);
+}
+
+/* 滑入而不是弹跳；稳住一段再淡出，全程不遮住头像和牌 */
+@keyframes chipIn {
+  0% { opacity: 0; translate: -6px 0; scale: 0.96; }
+  12% { opacity: 1; translate: 0 0; scale: 1; }
+  84% { opacity: 1; translate: 0 0; scale: 1; }
+  100% { opacity: 0; translate: 4px 0; scale: 0.98; }
+}
+
+/* 减少动效时动画会被压到 0.01ms，靠「动画结束才透明」的元素会直接看不见，
+   所以这里要显式给一个静态可见态，靠 JS 的 setTimeout 收走。 */
+@media (prefers-reduced-motion: reduce) {
+  .skill-chip { animation: none !important; opacity: 1; }
+  .pill { animation: none !important; opacity: 1; transform: translate(-50%, -50%); }
+}
+
+/* 喊 CABO：金色气球字，浮在喊话者座位旁边。
+   气球感靠三样东西：厚圆描边定出饱满轮廓、竖向金属渐变做出球面感、
+   左上角一块高光；尺寸不走全屏，避免把一局里的普通事件演成大片。 */
+.cabo-balloon {
+  position: fixed;
+  z-index: 68;
   transform: translate(-50%, -50%);
-  font-size: clamp(46px, 10vw, 110px);
-  font-weight: 800;
-  letter-spacing: 0.5em;
-  text-indent: 0.5em;
-  background: linear-gradient(172deg, #FFEFB8 4%, #FFC94D 34%, #FF9E6B 66%, #FF7A59 100%);
+  font-family: "Arial Rounded MT Bold", "Segoe UI Black", "Arial Black", system-ui, sans-serif;
+  font-size: clamp(46px, 8vh, 82px);
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-indent: 0.03em;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  background: linear-gradient(180deg, #FFF8D8 0%, #FFE07E 24%, #FFC23D 52%, #F0A015 78%, #DC7F09 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 10px 26px rgba(255, 122, 89, 0.4));
-  animation: caboIn 2s var(--e-swing) forwards;
+  -webkit-text-stroke: 4px #D98C0F;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 8px 18px rgba(150, 92, 10, 0.34));
+  animation: balloonIn 1.8s var(--e-out) forwards;
 }
 
-.cabo-banner::before,
-.cabo-banner::after {
-  content: "";
+/* 光泽：只在字的上三分之一扫一条高光带，像充气表面反的那道光 */
+.cabo-balloon::before {
+  content: attr(data-text);
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 1.1em;
-  height: 1.1em;
-  margin: -0.55em 0 0 -0.55em;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 201, 77, 0.8);
-  opacity: 0;
+  inset: 0;
+  color: transparent;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.42) 20%, rgba(255, 255, 255, 0) 38%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-stroke: 0;
   pointer-events: none;
 }
-.cabo-banner::before { animation: caboRing 1.15s var(--e-out) 0.1s; }
-.cabo-banner::after { animation: caboRing 1.45s var(--e-out) 0.32s; }
 
-@keyframes caboRing {
-  0% { opacity: 0.75; transform: scale(0.35); }
-  100% { opacity: 0; transform: scale(10); }
+/* 像气球被吹起来：先弹大、再回缩、稳住后轻轻飘走 */
+@keyframes balloonIn {
+  0% { opacity: 0; scale: 0.55; translate: 0 12px; rotate: -3deg; }
+  26% { opacity: 1; scale: 1.12; translate: 0 -6px; rotate: -2deg; }
+  40% { scale: 0.97; translate: 0 0; rotate: 1.2deg; }
+  52% { scale: 1.03; rotate: -0.6deg; }
+  62% { scale: 1; rotate: 0deg; }
+  78% { opacity: 1; translate: 0 -4px; }
+  100% { opacity: 0; translate: 0 -24px; scale: 1.02; }
 }
 
-@keyframes caboIn {
-  0% {
-    opacity: 0;
-    letter-spacing: 1em;
-    text-indent: 1em;
-    transform: translate(-50%, -50%) scale(2.2);
-    filter: blur(14px) brightness(1.7) drop-shadow(0 10px 26px rgba(255, 122, 89, 0.4));
-  }
-  15% {
-    opacity: 1;
-    letter-spacing: 0.44em;
-    text-indent: 0.44em;
-    transform: translate(-50%, -50%) scale(0.94);
-    filter: blur(0) brightness(1.2) drop-shadow(0 10px 26px rgba(255, 122, 89, 0.4));
-  }
-  24% { transform: translate(-50%, -50%) scale(1.05); }
-  34% { transform: translate(-50%, -50%) scale(1); }
-  74% { opacity: 1; }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(1.14);
-    filter: blur(4px) drop-shadow(0 10px 26px rgba(255, 122, 89, 0.4));
-  }
-}
-
-.flash {
-  position: fixed;
-  inset: 0;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(255, 201, 77, 0.34), transparent 58%),
-    radial-gradient(circle at 50% 42%, transparent 52%, rgba(255, 122, 89, 0.14) 72%, transparent 86%);
-  animation: flashOut 1.15s var(--e-out) forwards;
-}
-
-@keyframes flashOut {
-  0% { opacity: 0; transform: scale(0.55); }
-  16% { opacity: 1; transform: scale(1.03); }
-  100% { opacity: 0; transform: scale(1.2); }
+@media (prefers-reduced-motion: reduce) {
+  .cabo-balloon { animation: none !important; opacity: 1; }
 }
 
 /* ---------- 对手思考态 ---------- */

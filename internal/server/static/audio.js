@@ -519,10 +519,10 @@
           this.osc(t, 300, { type: 'square', to: 210, dur: 0.16, gain: 0.12, attack: 0.003, lp: 1100, lpTo: 500 });
           this.osc(t + 0.17, 260, { type: 'square', to: 190, dur: 0.18, gain: 0.11, attack: 0.003, lp: 1000, lpTo: 460 });
         },
-        // 喊 CABO：上升噪声 + 主和弦钟 + 底鼓 + 闪光，时长对齐横幅的 2.1s
+        // 喊 CABO：上升 + 主和弦钟 + 底鼓，砸点对齐封蜡章压下那一刻（约 0.49s）
         cabo(t) {
-          this.riser(t, 0.52);
-          const hit = t + 0.52;
+          this.riser(t, 0.48);
+          const hit = t + 0.48;
           [62, 66, 69, 74, 76].forEach((m, i) => {
             this.bell(hit + i * 0.028, m + 12, { gain: 0.13 - i * 0.008, dur: 2.2, send: 0.6, pan: (i - 2) * 0.24 });
           });

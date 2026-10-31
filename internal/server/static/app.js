@@ -668,7 +668,7 @@ function runFlight(e) {
       }
       break;
     case 'cabo':
-      showCaboBanner();
+      showCaboBanner(e.player);
       snd('cabo');
       break;
     default:
@@ -693,15 +693,25 @@ function playFlights(events) {
   return new Promise((r) => setTimeout(r, total + 40));
 }
 
-function showCaboBanner() {
-  const b = document.createElement('div');
-  b.className = 'cabo-banner';
-  b.textContent = 'CABO';
-  $('fx').appendChild(b);
-  const f = document.createElement('div');
-  f.className = 'flash';
-  $('fx').appendChild(f);
-  setTimeout(() => { b.remove(); f.remove(); }, 2100);
+// 喊 CABO：金色气球字，盖在喊话者座位的正中间
+function showCaboBanner(pid) {
+  const who = typeof pid === 'number' ? pid : 0;
+  const r = panelRect(who);
+  if (!r) return;
+
+  const el = document.createElement('div');
+  el.className = 'cabo-balloon';
+  el.dataset.text = 'CABO';
+  el.textContent = 'CABO';
+  el.style.top = r.top + r.height / 2 + 'px';
+  $('fx').appendChild(el);
+
+  // 以座位中心为锚，左右各夹一点，避免字太长时贴出视口
+  const w = el.offsetWidth;
+  const cx = r.left + r.width / 2;
+  el.style.left = clamp(cx, w / 2 + 8, innerWidth - w / 2 - 8) + 'px';
+
+  setTimeout(() => el.remove(), 1900);
 }
 
 function anchor(pid) {
@@ -725,6 +735,50 @@ function pill(pid, text, color) {
   d.textContent = text;
   $('fx').appendChild(d);
   setTimeout(() => d.remove(), 1800);
+}
+
+// 技能发动提示：贴名条的胶囊（图标 + 名字 + 作用对象）。
+// 回合中的普通动作不该用大号裸字——那是 CABO 那种大招级事件的语汇，
+// 技能色只出现在图标底色和 1px 描边上，名字保持正文墨色。
+const SKILL_ICON = {
+  peek: '<svg viewBox="0 0 14 14"><path d="M1 7s2.2-3 6-3 6 3 6 3-2.2 3-6 3-6-3-6-3z"/><circle cx="7" cy="7" r="1.5"/></svg>',
+  spy: '<svg viewBox="0 0 14 14"><circle cx="6" cy="6" r="3.4"/><path d="M8.6 8.6 12 12"/></svg>',
+  swap: '<svg viewBox="0 0 14 14"><path d="M2 5h8.5l-2-2M12 9H3.5l2 2"/></svg>',
+};
+
+let skillChipEl = null;
+
+function panelRect(pid) {
+  const el = pid === 0 ? $('meBar') : seatEls.get(pid);
+  return el ? el.getBoundingClientRect() : null;
+}
+
+function skillChip(pid, label, sub, tone) {
+  // 连发时替换掉旧的，不要叠一屏
+  if (skillChipEl) skillChipEl.remove();
+  const r = panelRect(pid);
+  if (!r) return;
+
+  const el = document.createElement('div');
+  el.className = 'skill-chip';
+  el.dataset.tone = tone;
+  el.innerHTML = `<span class="sk-ico">${SKILL_ICON[tone] || ''}</span><span class="sk-txt"><b>${label}</b><i>${sub}</i></span>`;
+  el.style.left = r.right - 2 + 'px';
+  el.style.top = r.top + 16 + 'px';
+  $('fx').appendChild(el);
+
+  // 右侧放不下时：左边真有位置才翻过去，否则贴住视口右缘（宁可盖住自己的分数，也别压隔壁玩家的名字）
+  const w = el.offsetWidth;
+  if (r.right - 2 + w > innerWidth - 8) {
+    const leftPos = r.left + 2 - w;
+    el.style.left = (leftPos >= 8 ? leftPos : Math.max(8, innerWidth - w - 8)) + 'px';
+  }
+
+  skillChipEl = el;
+  setTimeout(() => {
+    el.remove();
+    if (skillChipEl === el) skillChipEl = null;
+  }, 1560);
 }
 
 function hitCard(pid, slot) {
@@ -768,10 +822,9 @@ function playOne(e, opts = {}) {
   switch (e.kind) {
     case 'cabo':
       if (!flown) {
-        showCaboBanner();
+        showCaboBanner(e.player);
         snd('cabo');
       }
-      pill(e.player, e.player === 0 ? '你喊了 CABO' : '对手喊了 CABO', '#e9b44c');
       break;
     case 'draw':
       if (!flown) snd('draw');
@@ -811,18 +864,18 @@ function playOne(e, opts = {}) {
     case 'peek':
       snd('peek');
       if (e.target) hitCard(e.target.player, e.target.slot);
-      pill(e.player, '透视', '#3fbfb4');
+      skillChip(e.player, '透视', '自己 · 1 张', 'peek');
       break;
     case 'spy':
       snd('spy');
       if (e.target) hitCard(e.target.player, e.target.slot);
-      pill(e.player, '窥探', '#9b7bf0');
+      skillChip(e.player, '窥探', '对手 · 1 张', 'spy');
       break;
     case 'swap':
       if (!flown) snd('swap');
       if (e.target) hitCard(e.target.player, e.target.slot);
       if (e.target2) hitCard(e.target2.player, e.target2.slot);
-      pill(e.player, '置换', '#ee8148');
+      skillChip(e.player, '置换', '场上 · 2 张', 'swap');
       break;
     default:
       break;
