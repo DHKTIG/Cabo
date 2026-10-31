@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: vet / test / build
+    name: fmt / vet / test / build
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,11 +21,27 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # 仓库里的 Go 源码必须已格式化，否则这里直接红
+      - name: gofmt
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未格式化，请运行 gofmt -w："
+            echo "$unformatted"
+            exit 1
+          fi
+
       - name: go vet
         run: go vet ./...
 
       - name: go test
         run: go test ./...
+
+      # 依赖漏洞扫描：只报告，不阻断构建（标准库漏洞取决于 runner 的 Go 版本）
+      - name: govulncheck
+        continue-on-error: true
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
       # 静态资源是 go:embed 进去的，所以这里构建出的产物即为可分发版本
       - name: build

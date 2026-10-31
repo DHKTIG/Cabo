@@ -1,0 +1,22 @@
+name: 功能建议
+description: 新玩法、界面改进、手感调整
+labels: [enhancement]
+body:
+  - type: textarea
+    id: scene
+    attributes:
+      label: 你遇到的场景
+      description: 先描述具体情境，比直接给方案更有用。
+      placeholder: 每次对手喊 CABO 之后，我都要重新数一遍手牌。
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你希望怎么改
+
+  - type: textarea
+    id: alt
+    attributes:
+      label: 考虑过的其它方案

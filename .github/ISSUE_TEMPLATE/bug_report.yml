@@ -1,0 +1,51 @@
+name: 问题反馈
+description: 崩溃、规则判定不对、界面异常等
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        日志在 `%LOCALAPPDATA%\Cabo\cabo.log`，附上它能快很多。记得先关掉游戏再复制，否则文件被占用。
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 越具体越好，比如「AI 喊 CABO 之后我的牌被换走了」。
+    validations:
+      required: true
+
+  - type: textarea
+    id: expect
+    attributes:
+      label: 你期望发生什么
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 开 3 个电脑对手
+        2. 第二轮，我喊 CABO
+        3. ...
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: Releases 里的版本号，或提交 SHA
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Windows 版本
+      placeholder: Windows 11 23H2
+
+  - type: textarea
+    id: log
+    attributes:
+      label: 日志片段
+      render: text

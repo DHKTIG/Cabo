@@ -5,5 +5,4 @@ cabo.log
 cabo_webview2_data/
 
 # 构建产物（发版请走 GitHub Releases，见 README）
-cabo.exe
-cabo-dev.exe
+*.exe
