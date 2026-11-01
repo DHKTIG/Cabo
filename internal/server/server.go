@@ -41,6 +41,7 @@ func New() *Server {
 	mux.HandleFunc("/api/ai", s.handleAI)
 	mux.HandleFunc("/api/next", s.handleNext)
 	mux.HandleFunc("/api/prefs", s.handlePrefs)
+	mux.HandleFunc("/api/stats", s.handleStats)
 	s.mux = mux
 	return s
 }
@@ -209,7 +210,7 @@ func (s *Server) handleNext(w http.ResponseWriter, r *http.Request) {
 		s.reply(w, errNotReady)
 		return
 	}
-	s.state = engine.NextRound(s.state, s.rng)
+	s.state = engine.NextRound(s.state)
 	for i := 1; i < len(s.state.Players); i++ {
 		if st, err := engine.Apply(s.state, i, ai.Decide(s.state, i, s.rng, s.level)); err == nil {
 			s.state = st

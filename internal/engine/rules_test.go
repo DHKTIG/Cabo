@@ -10,7 +10,14 @@ func mk(rank int) Card { return Card{Rank: rank} }
 // testState 手工构造一个已过开局阶段的局面。deck 的最后一个元素是牌堆顶。
 func testState(hands [][]Card, deck, discard []Card) State {
 	n := len(hands)
-	s := State{Caller: -1, Winner: -1, Phase: PhaseTurn, Round: 1, Peeked: make([]bool, n)}
+	s := State{
+		Caller: -1,
+		Winner: -1,
+		Phase:  PhaseTurn,
+		Round:  1,
+		Peeked: make([]bool, n),
+		rng:    rand.New(rand.NewSource(5)),
+	}
 	for i := range hands {
 		p := Player{Name: string(rune('A' + i))}
 		for _, c := range hands[i] {
@@ -335,7 +342,58 @@ func TestCallCaboWrongPenalty(t *testing.T) {
 	}
 }
 
-func TestDeckExhaustionEndsRound(t *testing.T) {
+func TestDeckExhaustionReshufflesDiscard(t *testing.T) {
+	s := testState(
+		[][]Card{{mk(3), mk(4), mk(5), mk(6)}, {mk(9), mk(9), mk(9), mk(9)}},
+		nil,
+		[]Card{mk(1), mk(2), mk(3), mk(7), mk(11)},
+	)
+	before := map[int]int{}
+	for _, c := range s.Discard {
+		before[c.Rank]++
+	}
+
+	ns, err := Apply(s, 0, Action{Type: ActDrawDeck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ns.Phase != PhasePlace || ns.Pending == nil {
+		t.Fatalf("牌堆摸空应洗弃牌堆继续，不该结算（phase=%v）", ns.Phase)
+	}
+	if ns.Reshuffle != 1 {
+		t.Fatalf("应记录洗牌 1 次，实际 %d", ns.Reshuffle)
+	}
+	// 5 张弃牌：洗完留 1 张明牌，剩下 4 张进牌堆，被摸走 1 张后牌堆剩 3
+	if len(ns.Deck) != 3 {
+		t.Fatalf("牌堆应有 3 张，实际 %d", len(ns.Deck))
+	}
+	if len(ns.Discard) != 1 {
+		t.Fatalf("弃牌堆应只留 1 张明牌，实际 %d", len(ns.Discard))
+	}
+	after := map[int]int{ns.Pending.Rank: 1, ns.Discard[0].Rank: 1}
+	for _, c := range ns.Deck {
+		after[c.Rank]++
+	}
+	for rank, n := range before {
+		if after[rank] != n {
+			t.Fatalf("洗回来的牌应当只是原来那 %d 张弃牌，%d 点对不上（%d 张）", len(before), rank, after[rank])
+		}
+	}
+	var sawShuffle, sawDraw bool
+	for _, e := range ns.Events {
+		if e.Kind == EvReshuffle {
+			sawShuffle = true
+		}
+		if e.Kind == EvDraw {
+			sawDraw = true
+		}
+	}
+	if !sawShuffle || !sawDraw {
+		t.Fatalf("应同时产生 EvReshuffle 与 EvDraw，实际 %v / %v", sawShuffle, sawDraw)
+	}
+}
+
+func TestBothPilesEmptyEndsRound(t *testing.T) {
 	s := testState(
 		[][]Card{{mk(3), mk(4), mk(5), mk(6)}, {mk(9), mk(9), mk(9), mk(9)}},
 		nil,
@@ -346,7 +404,26 @@ func TestDeckExhaustionEndsRound(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ns.Phase != PhaseRoundEnd {
-		t.Fatalf("牌堆空了应立即结束本轮，实际 %v", ns.Phase)
+		t.Fatalf("牌堆和弃牌堆都空了才应结束本轮，实际 %v", ns.Phase)
+	}
+}
+
+func TestReshuffleKeepsDiscardPileDrawing(t *testing.T) {
+	// 弃牌堆只剩一张时整叠洗走，不能出现"牌堆空、弃牌堆一张也拿不到"的死局
+	s := testState(
+		[][]Card{{mk(3), mk(4), mk(5), mk(6)}, {mk(9), mk(9), mk(9), mk(9)}},
+		nil,
+		[]Card{mk(2)},
+	)
+	ns, err := Apply(s, 0, Action{Type: ActDrawDeck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ns.Pending == nil || ns.Pending.Rank != 2 {
+		t.Fatal("最后一张弃牌应被洗进牌堆并摸到")
+	}
+	if len(ns.Deck) != 0 || len(ns.Discard) != 0 {
+		t.Fatalf("洗完应是空堆，实际牌堆 %d / 弃牌堆 %d", len(ns.Deck), len(ns.Discard))
 	}
 }
 
@@ -394,10 +471,14 @@ func TestCardConservationOverFullRound(t *testing.T) {
 		}
 		p := s.Turn
 		var err error
-		if s.Phase == PhaseTurn {
-			s, err = Apply(s, p, Action{Type: ActDrawDeck})
-		} else {
+		switch {
+		case s.Phase == PhasePlace:
 			s, err = Apply(s, p, Action{Type: ActDiscardPending})
+		case s.Reshuffle >= 2 && s.Caller < 0:
+			// 洗过两轮还摸得下去，剩下的只能靠人喊 CABO 收尾
+			s, err = Apply(s, p, Action{Type: ActCallCabo})
+		default:
+			s, err = Apply(s, p, Action{Type: ActDrawDeck})
 		}
 		if err != nil {
 			t.Fatalf("第 %d 步出错：%v", steps, err)
@@ -406,8 +487,8 @@ func TestCardConservationOverFullRound(t *testing.T) {
 			t.Fatalf("第 %d 步牌数不守恒：%d", steps, got)
 		}
 	}
-	if steps < 40 {
-		t.Fatalf("一轮应该跑完整个牌堆，实际只走了 %d 步", steps)
+	if s.Reshuffle < 2 {
+		t.Fatalf("牌堆摸空应把弃牌堆洗回来继续，实际只洗了 %d 次（%d 步）", s.Reshuffle, steps)
 	}
 }
 

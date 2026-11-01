@@ -114,13 +114,12 @@ func applyDrawDeck(s State, p int) (State, error) {
 	if s.Phase != PhaseTurn {
 		return s, ErrWrongPhase
 	}
-	if len(s.Deck) == 0 {
-		s.addLog("牌堆摸完了，本轮结束")
+	c, ok := s.drawTop()
+	if !ok {
+		s.addLog("牌堆和弃牌堆都空了，本轮结束")
 		s.endRound()
 		return s, nil
 	}
-	c := s.Deck[len(s.Deck)-1]
-	s.Deck = s.Deck[:len(s.Deck)-1]
 	s.Pending = &c
 	s.Phase = PhasePlace
 	s.emit(Event{Kind: EvDraw, Player: p})
@@ -229,11 +228,12 @@ func applyTakeDiscard(s State, p int, a Action) (State, error) {
 		}
 		s.emit(Event{Kind: EvPenalty, Player: p, Card: cardViewPtr(top), Value: len(a.Indices)})
 		s.addLog("%s 记错了牌，收下 %s 并亮出 %d 张", s.Players[p].Name, top.Label(), len(a.Indices))
-		if len(a.Indices) >= 3 && len(s.Deck) > 0 {
-			c := s.Deck[len(s.Deck)-1]
-			s.Deck = s.Deck[:len(s.Deck)-1]
-			s.Players[p].Hand = append(s.Players[p].Hand, Slot{Card: c, KnownBy: []int{p}})
-			s.addLog("%s 一次换 3 张失败，额外罚抽 1 张", s.Players[p].Name)
+		if len(a.Indices) >= 3 {
+			// 罚抽也走同一个摸牌入口，牌堆空了就先洗弃牌堆，不能因为摸不到而免罚
+			if c, ok := s.drawTop(); ok {
+				s.Players[p].Hand = append(s.Players[p].Hand, Slot{Card: c, KnownBy: []int{p}})
+				s.addLog("%s 一次换 3 张失败，额外罚抽 1 张", s.Players[p].Name)
+			}
 		}
 	}
 

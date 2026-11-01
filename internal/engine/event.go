@@ -7,6 +7,7 @@ const (
 	EvRoundStart EventKind = "roundStart"
 	EvPeek       EventKind = "peek"
 	EvDraw       EventKind = "draw"
+	EvReshuffle  EventKind = "reshuffle"
 	EvDiscard    EventKind = "discard"
 	EvPlace      EventKind = "place"
 	EvTake       EventKind = "take"

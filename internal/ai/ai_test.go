@@ -34,7 +34,7 @@ func TestAIGamesKeepCardCount(t *testing.T) {
 				break
 			}
 			if s.Phase == engine.PhaseRoundEnd {
-				s = engine.NextRound(s, r)
+				s = engine.NextRound(s)
 				if got := countCards(s); got != 54 {
 					t.Fatalf("seed %d 新发牌后牌数 %d", seed, got)
 				}

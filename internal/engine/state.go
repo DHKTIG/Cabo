@@ -21,7 +21,6 @@ var (
 	ErrNoPending     = errors.New("没有待处理的牌")
 	ErrCaboLocked    = errors.New("已经喊过 CABO，不能再喊")
 	ErrLockedHand    = errors.New("喊 CABO 的人手牌已锁定")
-	ErrDeckEmpty     = errors.New("牌堆空了")
 )
 
 // Phase 对局阶段。
@@ -80,9 +79,15 @@ type State struct {
 	CaboQueue []int    `json:"caboQueue"`
 	Peeked    []bool   `json:"peeked"`
 	Round     int      `json:"round"`
-	Winner    int      `json:"winner"` // -1 表示未结束
+	Reshuffle int      `json:"reshuffle"` // 本轮把弃牌堆洗回牌堆的次数，也是「这轮拖了多久」的信号
+	Winner    int      `json:"winner"`    // -1 表示未结束
 	Log       []string `json:"log"`
 	Events    []Event  `json:"events"`
+
+	// rng 是开局时注入的那台随机数发生器，中途洗牌（弃牌堆洗回牌堆）要用。
+	// 不导出所以不会进 JSON；Clone 是结构体浅拷贝，指针会跟着一起走，
+	// 于是一局游戏始终共用同一条随机流，同一个种子仍能复现出完全一样的牌序。
+	rng *rand.Rand
 }
 
 const maxLog = 40
@@ -127,24 +132,26 @@ func NewGame(names []string, ai []bool, r *rand.Rand) State {
 		Caller:  -1,
 		Winner:  -1,
 		Round:   1,
+		rng:     r,
 	}
 	for i := 0; i < n; i++ {
 		s.Players[i] = Player{Name: names[i], IsAI: ai[i]}
 	}
-	s.startRound(r)
+	s.startRound()
 	return s
 }
 
 // startRound 发牌并重置本轮状态。
-func (s *State) startRound(r *rand.Rand) {
+func (s *State) startRound() {
 	deck := NewDeck()
-	r.Shuffle(len(deck), func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
+	s.rng.Shuffle(len(deck), func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
 
 	s.Deck = deck
 	s.Discard = nil
 	s.Pending = nil
 	s.CaboQueue = nil
 	s.Caller = -1
+	s.Reshuffle = 0
 	s.Turn = 0
 	s.Phase = PhasePeek
 	s.Peeked = make([]bool, len(s.Players))
@@ -169,6 +176,38 @@ func (s *State) allPeeked() bool {
 		}
 	}
 	return true
+}
+
+// refillDeck 牌堆摸空时把弃牌堆洗回牌堆。
+// 洗完在弃牌堆上留一张明牌：它是场上唯一的常驻公开信息，跟着一起洗走会让
+// 「从弃牌堆拿牌」这个动作凭空消失一整圈。
+// 保证洗完牌堆至少有一张；返回 false 表示弃牌堆也空了，本轮只能就此结算。
+func (s *State) refillDeck() bool {
+	if len(s.Discard) == 0 {
+		return false
+	}
+	moved := append([]Card(nil), s.Discard...)
+	s.rng.Shuffle(len(moved), func(i, j int) { moved[i], moved[j] = moved[j], moved[i] })
+	// 洗完留一张明牌在弃牌堆上，场上不能没有牌可拿；弃牌堆只剩一张时整叠洗走
+	cut := max(1, len(moved)-1)
+	s.Deck = moved[:cut]
+	s.Discard = append([]Card(nil), moved[cut:]...)
+	s.Reshuffle++
+	s.emit(Event{Kind: EvReshuffle, Player: -1, Value: len(s.Deck)})
+	s.addLog("牌堆摸空，把弃牌堆的 %d 张洗回牌堆", len(s.Deck))
+	return true
+}
+
+// drawTop 从牌堆顶摸一张；牌堆摸空就地洗一次弃牌堆再接着摸。
+// 两堆都空时返回 false，由调用方决定怎么收尾。
+func (s *State) drawTop() (Card, bool) {
+	if len(s.Deck) == 0 && !s.refillDeck() {
+		return Card{}, false
+	}
+	n := len(s.Deck)
+	c := s.Deck[n-1]
+	s.Deck = s.Deck[:n-1]
+	return c, true
 }
 
 // advance 推进到下一个行动者。若有 CABO 队列则按队列走。
@@ -263,13 +302,13 @@ func (s *State) endRound() {
 	s.Phase = PhaseRoundEnd
 }
 
-// NextRound 进入下一轮。
-func NextRound(s State, r *rand.Rand) State {
+// NextRound 进入下一轮。洗牌用的还是 NewGame 注入的那台随机数发生器，它已经存在状态里。
+func NextRound(s State) State {
 	c := s.Clone()
 	if c.Phase != PhaseRoundEnd {
 		return c
 	}
 	c.Round++
-	c.startRound(r)
+	c.startRound()
 	return c
 }

@@ -82,7 +82,8 @@ func decideTurn(s engine.State, p int, r *rand.Rand, pr params) engine.Action {
 
 	if s.Caller < 0 {
 		limit := pr.callAt
-		if len(s.Deck) < 8 {
+		// 牌堆见底或已经洗过一次，说明这轮拖长了：放宽喊话门槛，别让回合无限走下去
+		if len(s.Deck) < 8 || s.Reshuffle > 0 {
 			limit = pr.callLate
 		}
 		switch {
