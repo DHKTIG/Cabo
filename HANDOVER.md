@@ -73,26 +73,28 @@ E:\Cabo\
 │   │   ├── rules.go             Apply()：唯一的规则入口
 │   │   ├── event.go             结构化事件，驱动前端动画
 │   │   ├── view.go              视角裁剪，防止暗牌泄漏
-│   │   └── rules_test.go        15 条规则用例
+│   │   └── rules_test.go        17 条规则用例
 │   ├── ai\
 │   │   ├── ai.go                启发式 AI
 │   │   └── ai_test.go           60 个种子 × 全程牌数守恒
 │   └── server\
 │       ├── server.go            HTTP 接口 + 静态资源
 │       ├── prefs.go             音量设置的持久化（写文件，见 5.6 节）
+│       ├── stats.go             生涯记录的持久化（同一个目录，见 5.8 节）
 │       ├── errors.go
 │       ├── server_test.go       端到端打完整局
+│       ├── stats_test.go        记录合并规则 + 跨启动往返
 │       └── static\              前端（编译时嵌入）
 │           ├── index.html
-│           ├── style.css        约 1120 行
-│           ├── app.js           约 740 行
-│           └── audio.js         音频层（合成 + 配乐），约 810 行
+│           ├── style.css        约 1790 行
+│           ├── app.js           约 1400 行
+│           └── audio.js         音频层（合成 + 配乐），约 910 行
 └── docs\
     ├── CABO-玩法详解.md         完整规则调研（含各版本差异）
     └── 开发准备清单.md          立项时的规划文档
 ```
 
-代码量：Go 约 2260 行，前端约 2670 行。
+代码量：Go 约 2890 行（含测试约 980 行），前端约 4240 行。
 
 ---
 
@@ -103,6 +105,8 @@ E:\Cabo\
 `engine.Apply(state, player, action) (State, error)` —— 不碰网络、文件、时钟，随机数通过注入的 `*rand.Rand` 提供。
 
 **这条约束不要破坏。** 它让引擎可以 100% 单测、可以用种子精确回放、可以脱离 UI 跑模拟。
+
+一个例外要留意：牌堆摸空要把弃牌堆洗回来，洗牌发生在 `Apply` 内部，所以 `NewGame` 注入的那台发生器被存在了 `State.rng`（不导出 → 不进 JSON，`Clone` 是浅拷贝所以指针跟着走，一局游戏始终是同一条随机流）。判「纯」的标准随之变成「同样的种子 + 同样的动作序列 = 同样的牌序」，回放仍然成立；但**不要**在 `Apply` 里碰时钟、文件或全局随机源。`NextRound(state)` 因此也不再收发生器参数。
 
 ### 4.2 隐藏信息必须裁剪
 
@@ -120,7 +124,9 @@ v := engine.ViewFor(s.state, 0)  // 0 号玩家的视角
 
 引擎每次状态变化会写一条 `Event`（谁、做了什么、涉及哪张牌、指向哪个位置），服务端 `reply()` 投递一次后清空 `s.state.Events`。前端拿事件播动画，而不是解析文字日志。
 
-事件类型见 `internal/engine/event.go`：`roundStart / peek / draw / discard / place / take / penalty / spy / swap / cabo / score / gameOver`。
+事件类型见 `internal/engine/event.go`：`roundStart / peek / draw / reshuffle / discard / place / take / penalty / spy / swap / cabo / score / reset / gameOver`。
+
+`reshuffle` 是「牌堆摸空、弃牌堆洗回来」，`player` 固定 `-1`（不是谁的动作），`value` 是洗回去的张数。前端据此演一段洗牌：牌从弃牌堆飞向牌堆、牌堆抖一下、在牌堆上方挂一条「弃牌堆洗回牌堆」说明条，配 `shuffle` 音效。它跟着触发它的那条 `draw` 一起到达，所以动画顺序天然正确：先洗完，再摸牌。
 
 ### 4.4 先播动画，再切状态
 
@@ -158,7 +164,8 @@ setView(v, { skipCabo: true }); // 再切到新状态
 | 弃牌堆拿牌触发技能 | 不触发 |
 | 喊 CABO 后 | 其他人各行动一次，喊者手牌锁定不可被换 |
 | 平局 | 喊者胜 |
-| 牌堆摸空 | 立即结束本轮计分 |
+| 牌堆摸空 | 把弃牌堆洗回牌堆继续，弃牌堆上留一张明牌（计数在 `State.Reshuffle`） |
+| 两堆都空 | 才结束本轮计分 |
 | 100 分重置 | 恰好 100，一场限一次 |
 | 超过 100 分 | 打满整轮再结算 |
 
@@ -210,7 +217,7 @@ setView(v, { skipCabo: true }); // 再切到新状态
 
 ### 动效清单
 
-发牌斜飞入落定、3D 翻牌、弃牌落入、牌堆弹跳、飞牌（WAAPI 弧线）、胶囊提示、技能脉冲、CABO 全屏横幅、座位呼吸光晕、结算条生长 + 数字滚动、对手思考小点。
+发牌斜飞入落定、3D 翻牌、弃牌落入、牌堆弹跳、洗牌（牌回堆 + 牌墩搓动 + 说明条）、飞牌（WAAPI 弧线）、胶囊提示、技能脉冲、连击弹跳 + 爆发字条、CABO 全屏横幅、座位呼吸光晕、结算回顾卡错峰揭开、结算条生长 + 数字滚动、对手思考小点。
 
 ### 5.5 运动语言（v12 重做）
 
@@ -262,7 +269,7 @@ setView(v, { skipCabo: true }); // 再切到新状态
 - **总线**：`sfxBus` / `musicBus` → `ducker` → `master` → `limiter`（DynamicsCompressor，阈值 -10 dB）→ destination。另有一条 `revIn → ConvolverNode → master` 的混响支路。
 - **混响**：没有 IR 文件，用「白噪声 × 幂衰减 + 单极低通 + 15 ms 预延迟」在运行时生成 2.1 秒的立体声冲激响应。
 - **音色基元**：`osc()`（振荡器 + 可选滤波 + 包络）、`noise()`（噪声 + 带通/高/低通）、`pluck()`（音乐盒/木琴：基音 + 微非谐泛音 + 敲击瞬态）、`bell()`（非谐泛音 2.76/5.4/8.93）、`bassNote()`、`flick()`（纸牌甩动 = 三段噪声瞬态）、`whoosh()`、`thud()`。
-- **23 个音效**：`ui select deselect deal settle flip draw discard place take land receive swap peek spy penalty error cabo start score tick win lose`。`play(name, arg)` 是唯一入口，内部 try/catch，音频出错不影响牌局。
+- **27 个音效**：`ui select deselect deal settle shuffle flip draw discard place take land receive swap peek spy penalty error cabo start score combo comboBreak recap tick win lose`。`play(name, arg)` 是唯一入口，内部 try/catch，音频出错不影响牌局。
 
 **按键反馈的接法**：`app.js` 底部一条委托监听 `document.addEventListener('click', e => { if (e.target.closest('button')) snd('ui') })`，动态生成的操作按钮和键盘 Enter 触发的 click 都能覆盖。
 
@@ -290,7 +297,30 @@ setView(v, { skipCabo: true }); // 再切到新状态
 
 写文件前 `io.LimitReader(4096)` + 数值夹紧到 0–1，路径不接受外部输入。
 
----
+### 5.8 累积式反馈与回合回顾（app.js + stats.go）
+
+爆款靠「每一步都在累加」留住人，原来这局每个动作都只反馈一次、结算只列四行数字。补了三层：
+
+**连击（`judgeStreak` / `setStreak` / `combo-chip`）**
+- 判定口径：**只认玩家自己验证过的降分**。`place` 到明牌位且摸进的牌更小、`takeDiscard` 换出的牌全部严格更大 → +1；换了张更大的、或触发 `penalty`（记错）→ 归零；**安置到暗牌位算中性**（既不奖励也不惩罚试探，因为 CABO 的核心就是记忆，惩罚盲试会让玩法变味）。
+- 判定发生在 `act()` 里，用**动作前的 view** 比对（`before.pending` / `before.discardTop` / `before.players[0].hand[i].visible`），动作后 view 就被 `applyView` 换掉了。
+- 递进：`comboTier(n)` 分 cool/warm/hot/flow（2/3/5/7 档），只换颜色和描边，**不做辉光**（这是持续状态标识，不是大招演出，见 5.4 的语汇分工）。音效 `combo(t,n)` 沿 D 大调五声音阶逐级往上爬，第 4 段起加彩、第 7 段起加钟，峰值实测 0.065→0.085→0.110，跟档位一起涨。
+- 断了给 `comboBreak`（往下掉的小三度，很轻），只在原来 ≥3 时发声——两三连就断不值得打扰。
+- `renderMe()` 每次重建名条，所以「涨一级弹一下」用 `pendingComboFx` 标志传递，渲染时消费掉并补 `.pop` 类。
+
+**回合回顾（`buildRecap`）**
+- 原料是 `roundEvents`：`setView` 里把每次响应的 `v.events` 攒起来，`view.round` 一变就清空。服务端投递一次就清 `state.Events`，所以本轮历史**只有客户端有**，这是它唯一能成立的地方。
+- 卡片按优先级取前 4：生涯新低 > CABO 赌局结果 > 最狠一手（`take.value>=2`）> 谁用置换动了你 > 记错 > 零失误 > 中途洗牌 > 100 分重置。
+- **只用看得见的信息**：换了几张、谁对谁、进账多少。暗牌的面额一概不进回顾卡——回顾卡是从客户端自己的视图拼的，天然不可能越权，别改成服务端下发。
+- 版式：单列横条（面板正文只有 ~330px，两列会把中文折成两三行、像报错列表）。图标 22px 色块 + 结论加粗 + 注脚灰字，`flex-wrap` 兜底。
+- 揭示节奏：回顾卡先出（每张隔 150ms 配一声 `recap` 轻钟），再走分数行的 `tick`，最后才是 `score`/`win`/`lose`；没有回顾卡时退回原来的 480ms 节奏。
+
+**生涯记录（`stats.go`，`/api/stats`）**
+- 和音量同一个理由存 `%LOCALAPPDATA%\Cabo\stats.json`：localStorage 在 WebView2 里每次启动都归零。
+- 字段：`bestRound`（单轮最低点数）、`bestStreak`、`rounds`、`perfect`（零失误轮）、`cabos`/`cabosWon`。合并规则：计数累加、`bestRound` 取更小、`bestStreak` 取更大。
+- **「没记录」用 -1，不能用 0**：0 点是这一局能拿到的最好结果，拿它当空值会让第一次真 0 分和空档分不清。
+- 上报由 `reportStats()` 在结算面板渲染时触发，**`roundEvents` 为空就跳过**——刷新页面重进结算时事件是空的，不跳过会把计数翻倍。
+- 顶栏 `#careerChip` 显示这五个数，读不到就整块 `.hidden`，不影响牌局。
 
 ---
 
@@ -362,9 +392,9 @@ setView(v, { skipCabo: true }); // 再切到新状态
 
 三层，`go test ./...` 全绿：
 
-1. **规则单元测试**（`internal/engine`）—— 15 条，覆盖 1 换多、翻错惩罚、CABO 计分、平局、牌堆耗尽。
+1. **规则单元测试**（`internal/engine`）—— 17 条，覆盖 1 换多、翻错惩罚、CABO 计分、平局、牌堆摸空后洗弃牌堆、两堆都空才结算。
 2. **AI 对局守恒**（`internal/ai`）—— 4 个 AI 用 60 个种子互打，每步断言「牌堆 + 弃牌堆 + 所有手牌 + 待安置牌 = 54」。**这条断言抓出过两个真实 bug**：换出的牌没进弃牌堆。改动引擎后一定要跑。
-3. **HTTP 端到端**（`internal/server`）—— 通过真实接口打完整一局，验证无非法状态、无死循环、结束条件正确。
+3. **HTTP 端到端**（`internal/server`）—— 通过真实接口打完整一局，验证无非法状态、无死循环、结束条件正确。另有 `stats_test.go` 盯住生涯记录的合并规则（0 点是有效记录不是空值、脏输入折回、连击为 0 不占「有记录」）和跨启动往返。
 
 ---
 

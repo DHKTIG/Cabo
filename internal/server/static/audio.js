@@ -469,6 +469,27 @@
           const c = clamp(n || 1, 1, 4);
           for (let i = 0; i < c; i++) this.flick(t + i * 0.06, { gain: 0.07, bp: 2500 });
         },
+        // 洗牌：一串由慢到快的 riffle 纸响，末尾两下把牌墩顿齐
+        shuffle(t) {
+          const rnd = mulberry32((t * 911) | 0);
+          const n = 16;
+          for (let i = 0; i < n; i++) {
+            const at = t + Math.pow(i / n, 0.7) * 0.44 + rnd() * 0.014;
+            this.noise(at, {
+              dur: 0.018 + rnd() * 0.014,
+              gain: 0.07 + rnd() * 0.08,
+              bp: 1900 + rnd() * 1500,
+              q: 0.9,
+              pan: -0.5 + (i / n) * 1.0,
+              send: 0.08,
+              bus: S,
+            });
+          }
+          this.flick(t + 0.3, { gain: 0.13, bp: 2400, send: 0.12, bus: S });
+          // 两下顿齐对齐 JS 里的 riffle 抖动（约 0.65s）
+          this.thud(t + 0.62, { gain: 0.17, from: 140, to: 60, dur: 0.16 });
+          this.thud(t + 0.7, { gain: 0.12, from: 120, to: 56, dur: 0.14 });
+        },
         flip(t) {
           this.flick(t, { gain: 0.2, bp: 3000, send: 0.12 });
           this.osc(t + 0.02, 640, { to: 900, dur: 0.09, gain: 0.08, attack: 0.004 });
@@ -537,6 +558,29 @@
         score(t) {
           [74, 78, 81].forEach((m, i) => this.pluck(t + i * 0.115, m, { gain: 0.12, dur: 0.6, send: 0.3, pan: -0.2 + i * 0.2 }));
           this.duck(0.55, 1.6);
+        },
+        // 连击：D 大调五声音阶逐级往上爬，每多一段更高更亮，第 4 段起加彩、第 6 段起加钟
+        combo(t, n) {
+          const ladder = [62, 66, 69, 71, 74, 78, 81, 86, 89, 93];
+          const at = clamp((n || 2) - 2, 0, ladder.length - 1);
+          const big = at >= 4;
+          this.pluck(t, ladder[at], { gain: 0.1 + at * 0.006, dur: 0.34, send: 0.18 + at * 0.02, transient: false });
+          this.pluck(t + 0.07, ladder[Math.min(at + 1, ladder.length - 1)], { gain: 0.08 + at * 0.006, dur: 0.3, send: 0.22 + at * 0.02 });
+          if (big) {
+            this.pluck(t + 0.14, ladder[Math.min(at + 2, ladder.length - 1)] + 12, { gain: 0.06, dur: 0.34, send: 0.4, pan: 0.2 });
+            this.sparkle(t + 0.1, big ? 4 : 2, 7317);
+          }
+          if (at >= 6) this.bell(t + 0.1, ladder[at] + 12, { gain: 0.07, dur: 1.2, send: 0.55, pan: -0.18 });
+        },
+        // 连击断了：往下掉的小三度，轻到只够「心里咯一下」，不该像挨罚
+        comboBreak(t) {
+          this.pluck(t, 72, { gain: 0.09, dur: 0.3, send: 0.22, transient: false });
+          this.pluck(t + 0.11, 69, { gain: 0.08, dur: 0.42, send: 0.3 });
+        },
+        // 回顾卡逐张揭开：很轻的一声钟，一张比一张高
+        recap(t, i) {
+          const k = clamp(i || 0, 0, 3);
+          this.bell(t, 76 + k * 3, { gain: 0.1, dur: 0.9, send: 0.5, pan: -0.24 + k * 0.16 });
         },
         tick(t, i) {
           this.pluck(t, 76 + ((i || 0) % 3) * 2, { gain: 0.07, dur: 0.16, transient: false });

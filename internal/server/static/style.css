@@ -225,6 +225,21 @@ body {
 
 .turn-chip.swap { animation: chipSwap 0.5s var(--e-swing); }
 
+/* 生涯记录条：跨局累积的「你打过什么」，静默地待在顶栏，不跟回合提示抢注意力 */
+.career {
+  gap: 0;
+  padding: 4px 4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.career .cr { padding: 0 8px; border-left: 1px solid var(--line); white-space: nowrap; }
+.career .cr:first-child { border-left: 0; }
+
+/* 顶栏不换行，窗口太窄时先让生涯条让位，别把「重新开局」挤出视口 */
+@media (max-width: 560px) {
+  .career { display: none; }
+}
+
 @keyframes chipSwap {
   0% { opacity: 0; transform: translateY(7px) scale(0.9); }
   58% { opacity: 1; transform: translateY(-2px) scale(1.05); }
@@ -431,6 +446,43 @@ body {
   26% { transform: translateY(3px) scale(1.1, 0.9); }
   58% { transform: translateY(-4px) scale(0.96, 1.06); }
   100% { transform: translateY(0) scale(1, 1); }
+}
+
+/* 洗牌落定：整墩左右搓两下再顿齐。和 bump 共用 animation 属性，
+   所以 JS 里加其中一个之前会把另一个摘掉，避免后写的规则吃掉前一个。 */
+.deck-stack.riffle { animation: riffle 0.62s var(--e-swing); }
+
+@keyframes riffle {
+  0% { transform: translateX(0) rotate(0deg); }
+  22% { transform: translateX(-8px) rotate(-4deg); }
+  50% { transform: translateX(7px) rotate(3deg); }
+  74% { transform: translateX(-3px) rotate(-1.2deg); }
+  100% { transform: translateX(0) rotate(0deg); }
+}
+
+/* 洗牌的说明条：动作本身不是某个玩家干的，所以不挂人名，直接标在牌堆上 */
+.reshuffle-tag {
+  position: fixed;
+  z-index: 66;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  background: var(--surface);
+  color: #A5700C;
+  border: 1px solid rgba(217, 140, 15, 0.34);
+  box-shadow: 0 6px 18px rgba(47, 42, 36, 0.14);
+  animation: reshuffleTag 1.5s ease forwards;
+}
+
+@keyframes reshuffleTag {
+  0% { opacity: 0; transform: translate(-50%, -100%) scale(0.86); }
+  14% { opacity: 1; transform: translate(-50%, -100%) scale(1.04); }
+  26% { transform: translate(-50%, -100%) scale(1); }
+  76% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -128%) scale(0.95); }
 }
 
 .pending-slot {
@@ -984,6 +1036,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .skill-chip { animation: none !important; opacity: 1; }
   .pill { animation: none !important; opacity: 1; transform: translate(-50%, -50%); }
+  .reshuffle-tag { animation: none !important; opacity: 1; transform: translate(-50%, -100%); }
+  .deck-stack.riffle { animation: none !important; }
 }
 
 /* 喊 CABO：金色气球字，浮在喊话者座位旁边。
@@ -1426,6 +1480,112 @@ body {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* ---------- 连击（累积式反馈） ---------- */
+
+/* 涨档只换颜色和描边，不加辉光——这是持续状态标识，不是大招演出 */
+.combo-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  background: var(--tone-tint);
+  color: var(--tone-ink);
+  border: 1px solid var(--tone-line);
+}
+
+.combo-chip[data-tier="cool"] { --tone-tint: rgba(31, 167, 154, 0.12); --tone-line: rgba(31, 167, 154, 0.3); --tone-ink: #17857A; }
+.combo-chip[data-tier="warm"] { --tone-tint: rgba(232, 163, 61, 0.16); --tone-line: rgba(232, 163, 61, 0.38); --tone-ink: #A87116; }
+.combo-chip[data-tier="hot"] { --tone-tint: rgba(242, 130, 60, 0.18); --tone-line: rgba(242, 130, 60, 0.44); --tone-ink: #B45B12; }
+.combo-chip[data-tier="flow"] { --tone-tint: rgba(255, 201, 77, 0.26); --tone-line: rgba(217, 140, 15, 0.5); --tone-ink: #8F5D06; }
+
+/* 「累积」必须是动作：涨一级弹一下，音高也跟着上一级 */
+.combo-chip.pop { animation: comboPop 0.52s var(--e-spring); }
+
+@keyframes comboPop {
+  0% { transform: scale(0.82) translateY(3px); }
+  46% { transform: scale(1.17) translateY(-3px); }
+  100% { transform: scale(1) translateY(0); }
+}
+
+.combo-flare {
+  position: fixed;
+  z-index: 67;
+  transform: translate(-50%, -100%);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: comboFlare 1.05s var(--e-out) forwards;
+}
+
+@keyframes comboFlare {
+  0% { opacity: 0; transform: translate(-50%, -80%) scale(0.85); }
+  22% { opacity: 1; transform: translate(-50%, -118%) scale(1.06); }
+  68% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -176%) scale(1); }
+}
+
+/* ---------- 回合回顾卡 ---------- */
+
+/* 单列横条：面板正文只有 ~330px，两列会把中文折成两三行，反而像报错列表 */
+.recap {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 16px 0 4px;
+}
+
+.recap-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--tone-line);
+  animation: recapIn 0.5s var(--e-swing) both;
+}
+
+@keyframes recapIn {
+  0% { opacity: 0; transform: translateX(-14px) scale(0.96); }
+  60% { opacity: 1; transform: translateX(3px) scale(1.01); }
+  100% { opacity: 1; transform: none; }
+}
+
+.recap-card[data-tone="mint"] { --tone: var(--t-peek); --tone-tint: rgba(31, 167, 154, 0.13); --tone-line: rgba(31, 167, 154, 0.32); }
+.recap-card[data-tone="coral"] { --tone: var(--t-high); --tone-tint: rgba(232, 84, 74, 0.12); --tone-line: rgba(232, 84, 74, 0.3); }
+.recap-card[data-tone="violet"] { --tone: var(--t-spy); --tone-tint: rgba(139, 111, 232, 0.13); --tone-line: rgba(139, 111, 232, 0.3); }
+.recap-card[data-tone="amber"] { --tone: var(--t-swap); --tone-tint: rgba(242, 130, 60, 0.14); --tone-line: rgba(242, 130, 60, 0.34); }
+.recap-card[data-tone="gold"] { --tone: #C8890F; --tone-tint: rgba(255, 201, 77, 0.3); --tone-line: rgba(217, 140, 15, 0.44); }
+
+.rc-ico {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--tone-tint);
+  color: var(--tone);
+}
+.rc-ico svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 结论在前、注脚在后，一行放不下才折 */
+.rc-txt { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 7px; min-width: 0; }
+.rc-txt b { font-size: 11.5px; font-weight: 700; color: var(--ink); line-height: 1.4; }
+.rc-txt i { font-size: 10px; font-style: normal; color: var(--ink-3); line-height: 1.4; }
 
 /* ---------- 页面装饰元素 ---------- */
 

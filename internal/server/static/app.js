@@ -18,6 +18,13 @@ let seatEls = new Map();
 let enterCount = 0;
 let revealCount = 0;
 
+// 累积式反馈：连击只在「本轮」内累加，跨局的生涯记录存服务端（见 internal/server/stats.go）
+let streak = 0;
+let roundBestStreak = 0;
+let roundEvents = [];
+let career = null;
+let pendingComboFx = 0;
+
 // audio.js 提供 window.snd；音频起不来时静默降级，不能影响牌局
 const snd = (...a) => window.snd && window.snd(...a);
 const sndMode = (m) => window.sndMode && window.sndMode(m);
@@ -222,7 +229,7 @@ function renderMiddle() {
   if (stack) {
     stack.dataset.tier = deckTier(view.deckCount);
     if (prevDeckCount !== null && prevDeckCount !== view.deckCount) {
-      stack.classList.remove('bump');
+      stack.classList.remove('bump', 'riffle');
       void stack.offsetWidth;
       stack.classList.add('bump');
     }
@@ -293,13 +300,27 @@ function renderMe() {
     !view.gameOver && view.phase !== 'roundEnd'
       ? `<span class="me-est" title="已知的牌共 ${knownSum} 点，还有 ${unknown} 张没看过">已知 ${knownSum} 点 · 未知 ${unknown} 张</span>`
       : '';
+  const combo =
+    streak >= 2 && !view.gameOver && view.phase !== 'roundEnd'
+      ? `<span class="combo-chip" data-tier="${comboTier(streak)}" title="连续 ${streak} 次把自己已知的牌换成更小的">连击 ×${streak}</span>`
+      : '';
   bar.innerHTML =
     `<span class="avatar p0">${esc(initial(p.name))}</span>` +
     `<span>${esc(p.name)}</span>` +
     `<b>${p.score} 分</b>` +
     `<span class="me-progress"><i style="width:${pct(p.score)}%"></i></span>` +
     est +
+    combo +
     badges;
+
+  if (pendingComboFx) {
+    const n = pendingComboFx;
+    pendingComboFx = 0;
+    const chip = bar.querySelector('.combo-chip');
+    if (chip) chip.classList.add('pop');
+    snd('combo', n);
+    if (n >= 4) comboFlare(n >= 7 ? '手感来了' : '还在涨', n >= 7 ? '#E9A427' : '#3FBFB4', n);
+  }
 
   const hand = $('myHand');
   hand.innerHTML = '';
@@ -468,10 +489,76 @@ function callCabo() { act({ type: 'callCabo' }); }
 async function act(body) {
   if (busy || animating) return;
   busy = true;
+  const before = view;
   const r = await api('/api/action', body);
   busy = false;
   if (!r.ok) { toast(r.error); return; }
+  judgeStreak(before, body, r.view);
   applyView(r.view);
+}
+
+/* ---------------- 连击（累积式反馈） ---------------- */
+
+// 只认「自己验证过的降分」：CABO 的爽点是记住牌、把大牌甩掉，
+// 所以看不见面目的安置算中性——既奖励记忆，也不惩罚合理试探。
+function judgeStreak(before, body, after) {
+  if (!before || !after || !body) return;
+  const me = before.players[0];
+  if (!me) return;
+
+  // 记错牌（1 换多点数对不上）一律断，这是本轮最实在的失误
+  const broke = (after.events || []).some((e) => e.kind === 'penalty' && e.player === 0);
+  if (broke) return setStreak(0);
+
+  if (body.type === 'place' && before.pending) {
+    const old = me.hand[body.indices[0]];
+    if (!old || !old.visible || !old.card) return;
+    setStreak(before.pending.points < old.card.points ? streak + 1 : 0);
+    return;
+  }
+
+  if (body.type === 'takeDiscard' && before.discardTop) {
+    const out = body.indices.map((i) => me.hand[i]);
+    if (out.some((s) => !s || !s.visible || !s.card)) return;
+    const tp = before.discardTop.points;
+    const better = out.every((s) => tp < s.card.points);
+    setStreak(better ? streak + 1 : 0);
+  }
+}
+
+function setStreak(n) {
+  const prev = streak;
+  streak = clamp(n, 0, 99);
+  if (streak > roundBestStreak) roundBestStreak = streak;
+  if (streak > prev && streak >= 2) pendingComboFx = streak;
+  else if (streak < prev && prev >= 3) {
+    snd('comboBreak');
+    comboFlare('连击断了', '#9b9387', prev);
+  }
+}
+
+// 连击档位：2 起步、3 变色、5 加描边、7 起才是「手感来了」的金档
+function comboTier(n) {
+  if (n >= 7) return 'flow';
+  if (n >= 5) return 'hot';
+  if (n >= 3) return 'warm';
+  return 'cool';
+}
+
+function comboFlare(text, color, n) {
+  const chip = document.querySelector('.combo-chip');
+  const base = chip ? chip.getBoundingClientRect() : $('meBar').getBoundingClientRect();
+  const el = document.createElement('div');
+  el.className = 'combo-flare';
+  el.textContent = text;
+  if (color) el.style.color = color;
+  el.style.top = base.top - 6 + 'px';
+  el.dataset.tier = comboTier(n || streak);
+  $('fx').appendChild(el);
+  // 连击标识贴在名条右端时，爆发字条可能被视口切掉，夹一下
+  const w = el.offsetWidth;
+  el.style.left = clamp(base.left + base.width / 2, w / 2 + 8, innerWidth - w / 2 - 8) + 'px';
+  setTimeout(() => el.remove(), 1100);
 }
 
 async function nextRound() {
@@ -618,9 +705,41 @@ function flySwap(t1, t2) {
   setTimeout(() => flyCard(b, a, null, { duration: 720, w: 60 }), 90);
 }
 
+// 牌堆摸空、弃牌堆洗回来：整叠牌被抓回牌堆下方，搓几下再落定
+function runReshuffle(e) {
+  snd('shuffle');
+
+  const from = discardRect();
+  const to = deckRect();
+  const n = clamp(Math.ceil((e.value || 6) / 7), 3, 6);
+  if (from && to) {
+    for (let i = 0; i < n; i++) {
+      setTimeout(() => flyCard(from, to, null, { duration: 300, w: 54 }), i * 78);
+    }
+  }
+
+  const at = n * 78 + 200;
+  setTimeout(() => {
+    const stack = document.querySelector('.deck-stack');
+    if (stack) {
+      stack.classList.remove('riffle', 'bump');
+      void stack.offsetWidth;
+      stack.classList.add('riffle');
+    }
+    if (!to) return;
+    const tag = document.createElement('div');
+    tag.className = 'reshuffle-tag';
+    tag.textContent = '弃牌堆洗回牌堆';
+    tag.style.left = to.left + to.width / 2 + 'px';
+    tag.style.top = to.top - 14 + 'px';
+    $('fx').appendChild(tag);
+    setTimeout(() => tag.remove(), 1500);
+  }, at);
+}
+
 /* ---------------- 事件驱动动画 ---------------- */
 
-const FLIGHT_DUR = { draw: 700, discard: 700, place: 700, take: 700, swap: 900, cabo: 900 };
+const FLIGHT_DUR = { draw: 700, reshuffle: 620, discard: 700, place: 700, take: 700, swap: 900, cabo: 900 };
 
 function runFlight(e) {
   switch (e.kind) {
@@ -635,6 +754,9 @@ function runFlight(e) {
           },
         });
       }
+      break;
+    case 'reshuffle':
+      runReshuffle(e);
       break;
     case 'discard':
     case 'place':
@@ -830,6 +952,9 @@ function playOne(e, opts = {}) {
       if (!flown) snd('draw');
       pill(e.player, '摸了一张牌');
       break;
+    case 'reshuffle':
+      if (!flown) runReshuffle(e);
+      break;
     case 'discard':
       if (!flown) {
         snd('discard');
@@ -882,6 +1007,145 @@ function playOne(e, opts = {}) {
   }
 }
 
+/* ---------------- 回合回顾（结算要讲故事） ---------------- */
+
+const RECAP_ICON = {
+  cabo: '<svg viewBox="0 0 14 14"><path d="M2 5.4h2.6L8.6 2.6v8.8L4.6 8.6H2z"/><path d="M10.6 5.2a2.6 2.6 0 0 1 0 3.6"/></svg>',
+  take: '<svg viewBox="0 0 14 14"><path d="M2 11.4h10"/><path d="M7 2v6.6M4.4 6.2 7 8.8l2.6-2.6"/></svg>',
+  swap: '<svg viewBox="0 0 14 14"><path d="M2 5h8.5l-2-2M12 9H3.5l2 2"/></svg>',
+  fail: '<svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.4"/><path d="M5 5l4 4M9 5l-4 4"/></svg>',
+  clean: '<svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.4"/><path d="M4.4 7.1 6.2 9l3.5-4.2"/></svg>',
+  shuffle: '<svg viewBox="0 0 14 14"><path d="M2 4.6h9M9.6 2.2l2.4 2.4-2.4 2.4M12 9.4H3M5.4 7l-2.4 2.4L5.4 11.8"/></svg>',
+  reset: '<svg viewBox="0 0 14 14"><path d="M11.6 7a4.6 4.6 0 1 1-1.4-3.3"/><path d="M11.8 1.6v2.6H9.2"/></svg>',
+  record: '<svg viewBox="0 0 14 14"><path d="M7 1.8l1.6 3.3 3.6.5-2.6 2.6.6 3.6L7 10.4 4.4 11.8l.6-3.6L2.4 5.6l3.6-.5z"/></svg>',
+};
+
+// 原料是客户端本轮收到的事件 + 结算视图。只用看得见的信息：
+// 换了几张、谁动了谁、进账多少——暗牌的面额一概不进回顾卡。
+function buildRecap(v, evts, career) {
+  const cards = [];
+  // 中文里「你 一手甩掉」中间那个空格是多余的，只有别人名后才需要隔一下
+  const who = (i) => (i === 0 ? '你' : esc((v.players[i] || {}).name || '对手') + ' ');
+  const of = (kind, pid) => evts.filter((e) => e.kind === kind && (pid === undefined || e.player === pid));
+  const me = v.players[0];
+  const peak = (map) => Object.keys(map).sort((a, b) => map[b] - map[a])[0];
+
+  if (career && career.bestRound >= 0 && me.roundPts < career.bestRound) {
+    cards.push({
+      tone: 'gold',
+      icon: 'record',
+      text: `本轮 ${me.roundPts} 点，生涯新低`,
+      sub: career.bestRound === 0 ? '已经是最低分了' : `原纪录 ${career.bestRound} 点`,
+    });
+  }
+
+  if (v.caller >= 0) {
+    const won = v.players[v.caller].roundPts === 0;
+    cards.push({
+      tone: won ? 'mint' : 'coral',
+      icon: 'cabo',
+      text: `${who(v.caller)}的 CABO ${won ? '赌赢了' : '赌输了'}`,
+      sub: won ? '桌上最低，0 分入账' : `这轮进账 ${v.players[v.caller].roundPts} 分`,
+    });
+  }
+
+  let big = null;
+  of('take').forEach((e) => {
+    if (e.value >= 2 && (!big || e.value > big.value)) big = e;
+  });
+  if (big) {
+    cards.push({
+      tone: 'mint',
+      icon: 'take',
+      text: `${who(big.player)}一手甩掉 ${big.value} 张`,
+      sub: '同点数打包换出',
+    });
+  }
+
+  const touched = {};
+  of('swap').forEach((e) => {
+    [e.target, e.target2].forEach((t) => {
+      if (t && t.player === 0 && e.player !== 0) touched[e.player] = (touched[e.player] || 0) + 1;
+    });
+  });
+  const culprit = peak(touched);
+  if (culprit !== undefined) {
+    cards.push({
+      tone: 'violet',
+      icon: 'swap',
+      text: `${who(+culprit)}用置换动了你 ${touched[culprit]} 张牌`,
+      sub: '记好的位置得重推一遍',
+    });
+  }
+
+  const pen = {};
+  of('penalty').forEach((e) => {
+    pen[e.player] = (pen[e.player] || 0) + 1;
+  });
+  if (pen[0]) {
+    cards.push({ tone: 'coral', icon: 'fail', text: `你记错了 ${pen[0]} 次`, sub: '翻开的牌当场公示' });
+  } else {
+    const worst = peak(pen);
+    if (worst !== undefined) {
+      cards.push({ tone: 'coral', icon: 'fail', text: `${who(+worst)}记错 ${pen[worst]} 次`, sub: '亮出来的牌跑不掉了' });
+    }
+  }
+
+  const handled = of('place').length + of('take').length + of('discard').length;
+  if (!pen[0] && handled >= 3 && me.roundPts <= 12) {
+    cards.push({ tone: 'mint', icon: 'clean', text: '全程零失误', sub: `${handled} 次处理牌，收在 ${me.roundPts} 点` });
+  }
+
+  const rs = of('reshuffle').length;
+  if (rs) {
+    cards.push({ tone: 'amber', icon: 'shuffle', text: `中途洗了 ${rs} 次牌`, sub: '弃牌堆回了牌堆' });
+  }
+
+  of('reset').forEach((e) => {
+    cards.push({ tone: 'gold', icon: 'reset', text: `${who(e.player)}正好 100 分`, sub: '重置回 50，本场限一次' });
+  });
+
+  return cards.slice(0, 4);
+}
+
+// 本轮结果并回生涯记录。roundEvents 为空说明是刷新页面重进的结算，不再重复上报。
+function reportStats(v) {
+  if (!roundEvents.length) return;
+  const called = roundEvents.some((e) => e.kind === 'cabo' && e.player === 0);
+  const won = called && v.caller === 0 && v.players[0].roundPts === 0;
+  const mistakes = roundEvents.filter((e) => e.kind === 'penalty' && e.player === 0).length;
+  api('/api/stats', {
+    rounds: 1,
+    bestRound: v.players[0].roundPts,
+    bestStreak: roundBestStreak,
+    perfect: mistakes ? 0 : 1,
+    cabos: called ? 1 : 0,
+    cabosWon: won ? 1 : 0,
+  }).then((r) => {
+    if (r && r.ok && r.stats) {
+      career = r.stats;
+      renderCareer();
+    }
+  });
+}
+
+function renderCareer() {
+  const el = $('careerChip');
+  if (!el) return;
+  if (!career) {
+    el.classList.add('hidden');
+    return;
+  }
+  // 顶栏是不换行的 flex 行，这里只放两格能一眼扫到的数，其余收进 tooltip：
+  // 五个格会把「重新开局」按钮挤出视口（实测 534px 宽时按钮跑到 659px）
+  const low = career.bestRound >= 0 ? `${career.bestRound} 点` : '—';
+  const st = career.bestStreak >= 2 ? `×${career.bestStreak}` : '—';
+  const rate = career.cabos ? Math.round((100 * career.cabosWon) / career.cabos) + '%' : '—';
+  el.title = `已结算 ${career.rounds} 轮\n单轮最低 ${low}\n最长连击 ${st}\n喊 CABO ${career.cabos} 次，对了 ${rate}\n零失误 ${career.perfect} 轮`;
+  el.classList.remove('hidden');
+  el.innerHTML = `<span class="cr">最低 ${esc(low)}</span><span class="cr">连击 ${esc(st)}</span>`;
+}
+
 /* ---------------- 结算面板 ---------------- */
 
 function countUp(el, from, to, dur) {
@@ -917,8 +1181,19 @@ function renderOverlay() {
     html += '<div class="result-sub">总分最低</div>';
   } else {
     html += `<div class="result-title">第 ${view.round} 轮结算</div>`;
-    const who = view.caller >= 0 ? `${esc(view.players[view.caller].name)} 喊了 CABO` : '牌堆摸完了';
+    const who = view.caller >= 0 ? `${esc(view.players[view.caller].name)} 喊了 CABO` : '一副牌全用完了';
     html += `<div class="result-sub">${who}</div>`;
+  }
+  const recap = buildRecap(view, roundEvents, career);
+  if (recap.length) {
+    html += '<div class="recap">';
+    recap.forEach((c, i) => {
+      html += `<div class="recap-card" data-tone="${c.tone}" style="animation-delay:${i * 150}ms">
+        <span class="rc-ico">${RECAP_ICON[c.icon] || ''}</span>
+        <span class="rc-txt"><b>${c.text}</b><i>${c.sub}</i></span>
+      </div>`;
+    });
+    html += '</div>';
   }
   html += '<div class="score-list">';
   view.players.forEach((p, i) => {
@@ -943,18 +1218,27 @@ function renderOverlay() {
   ov.innerHTML = '';
   ov.appendChild(panel);
 
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduce = reduceMotion();
+  // 回顾卡先讲，再报分数；没有回顾卡时保持原来的 480ms 节奏
+  const seq = reduce ? 480 : Math.max(480, 220 + recap.length * 150);
+  panel.querySelectorAll('.recap-card').forEach((el, i) => {
+    if (!reduce) setTimeout(() => snd('recap', i), 220 + i * 150);
+  });
   panel.querySelectorAll('.score-row').forEach((row, i) => {
     const t = row.querySelector('.total');
     const from = Number(t.dataset.from);
     const to = Number(t.dataset.to);
     t.textContent = to;
-    if (!reduceMotion && from !== to) countUp(t, from, to, 720);
-    setTimeout(() => snd('tick', i), 480 + i * 90);
+    setTimeout(() => {
+      if (!reduce && from !== to) countUp(t, from, to, 720);
+      snd('tick', i);
+    }, seq + i * 90);
   });
 
-  // 让 CABO 的余音先落下去，再报结算
-  setTimeout(() => snd(view.gameOver ? (view.winner === 0 ? 'win' : 'lose') : 'score'), 300);
+  // 让 CABO 的余音和回顾先落下去，再报结算
+  setTimeout(() => snd(view.gameOver ? (view.winner === 0 ? 'win' : 'lose') : 'score'), seq + 300);
+
+  reportStats(view);
 }
 
 /* ---------------- 主流程 ---------------- */
@@ -976,7 +1260,13 @@ function setView(v, opts = {}) {
     prevCards = new Map();
     prevDiscardId = null;
     prevDeckCount = null;
+    roundEvents = [];
+    streak = 0;
+    roundBestStreak = 0;
+    pendingComboFx = 0;
   }
+  // 回顾卡的原料：事件在服务端投递一次就清空，所以本轮的历史只能由客户端攒
+  if (v.events && v.events.length) roundEvents = roundEvents.concat(v.events);
   view = v;
   mode = 'idle';
   picked = [];
@@ -1043,6 +1333,10 @@ async function startGame() {
   prevDiscardId = null;
   prevDeckCount = null;
   prevScores = [];
+  roundEvents = [];
+  streak = 0;
+  roundBestStreak = 0;
+  pendingComboFx = 0;
   applyView(r.view);
 }
 
@@ -1054,6 +1348,10 @@ function restart() {
   $('app').classList.add('hidden');
   $('startOverlay').classList.remove('hidden');
   view = null;
+  roundEvents = [];
+  streak = 0;
+  roundBestStreak = 0;
+  pendingComboFx = 0;
   sndMode('menu');
 }
 // 统一的按钮反馈音；用委托监听，动态生成的操作按钮也能覆盖到
@@ -1083,5 +1381,13 @@ api('/api/state').then((r) => {
     $('startOverlay').classList.add('hidden');
     $('app').classList.remove('hidden');
     applyView(r.view);
+  }
+});
+
+// 生涯记录：读不到就整块不显示，不影响牌局
+api('/api/stats').then((r) => {
+  if (r && r.ok && r.stats) {
+    career = r.stats;
+    renderCareer();
   }
 });
