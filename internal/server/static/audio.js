@@ -39,18 +39,36 @@
     return Object.assign({ music: 0.55, sfx: 0.75, muted: false }, s || {});
   }
 
-  function savePrefs() {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(prefs));
-    } catch (e) {
-      /* 无痕模式写不进去，还有服务端兜底 */
-    }
+  // 拖动滑块时 input 每帧都触发 setVolume→savePrefs；localStorage 写很便宜保持即时，
+  // 但 POST /api/prefs 会在服务端持锁同步写文件，必须防抖，否则一次拖动连发几十次请求。
+  let saveTimer = 0;
+
+  function postPrefs() {
     fetch('/api/prefs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(prefs),
     }).catch(() => {});
   }
+
+  function savePrefs() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(prefs));
+    } catch (e) {
+      /* 无痕模式写不进去，还有服务端兜底 */
+    }
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(postPrefs, 250);
+  }
+
+  // 窗口关闭/切后台前把还没落地的这次改动补发出去，避免丢掉最后一次拖动
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = 0;
+      postPrefs();
+    }
+  });
 
   // localStorage 按来源隔离，而原生窗口每次端口都不同，所以真正的持久值在服务端文件里。
   // 用户已经动过控件就不再用远端覆盖，避免竞态把新值刷回去。
