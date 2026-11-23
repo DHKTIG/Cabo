@@ -112,7 +112,7 @@ func decideTurn(s engine.State, p int, r *rand.Rand, pr params) engine.Action {
 				bestIdx = idxs[:2]
 			}
 		}
-		if bestRank > 0 {
+		if bestIdx != nil {
 			return engine.Action{Type: engine.ActTakeDiscard, Indices: bestIdx}
 		}
 
