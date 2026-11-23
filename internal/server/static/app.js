@@ -32,7 +32,9 @@ const sndMode = (m) => window.sndMode && window.sndMode(m);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// 缓存 MediaQueryList，避免每次调用都新建对象（hideOverlay/circleWipe/syncFlash 等高频用到）
+const reduceMotionMql = window.matchMedia('(prefers-reduced-motion: reduce)');
+const reduceMotion = () => reduceMotionMql.matches;
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -502,7 +504,15 @@ async function act(body) {
   if (busy || animating) return;
   busy = true;
   const before = view;
-  const r = await api('/api/action', body);
+  let r;
+  try {
+    r = await api('/api/action', body);
+  } catch (err) {
+    // api 抛异常（服务端 panic / 非 JSON / 断网）时 busy 必须复位，否则整局 UI 永久卡死
+    busy = false;
+    toast('网络异常，请重试');
+    return;
+  }
   busy = false;
   if (!r.ok) { toast(r.error); return; }
   judgeStreak(before, body, r.view);
@@ -580,7 +590,14 @@ async function nextRound(e) {
   if (busy) return;
   busy = true;
   const c = centerOf(e && e.currentTarget);
-  const r = await api('/api/next', {});
+  let r;
+  try {
+    r = await api('/api/next', {});
+  } catch (err) {
+    busy = false;
+    toast('网络异常，请重试');
+    return;
+  }
   busy = false;
   if (!r.ok) { toast(r.error); return; }
   await circleWipe(c.x, c.y, () => applyView(r.view));
@@ -852,6 +869,10 @@ function runReshuffle(e) {
 
 /* ---------------- 事件驱动动画 ---------------- */
 
+// FLIGHT_DUR 是每个事件占用动画通道的"排程预算"（决定下一个事件何时开始），
+// 不是单张牌的飞行动画时长——后者在 runFlight/flySwap 内部各自定义。
+// 关系是"预算 >= 实际动画"：swap 预算 900ms 覆盖两张错开 90ms、各 720ms 的飞行，
+// reshuffle 620ms 同理。所以这里的数字和动画时长故意不同，改它只调事件间隔、不改手感。
 const FLIGHT_DUR = { draw: 700, reshuffle: 620, discard: 700, place: 700, take: 700, swap: 900, cabo: 900 };
 
 function runFlight(e) {
@@ -1367,16 +1388,21 @@ function musicMode(v) {
   return 'table';
 }
 
+// 换局/重开/开局时清掉本轮的动画与连击状态，三处调用点共用，避免字段漂移
+function resetRoundState() {
+  prevCards = new Map();
+  prevDiscardId = null;
+  prevDeckCount = null;
+  roundEvents = [];
+  streak = 0;
+  roundBestStreak = 0;
+  pendingComboFx = 0;
+}
+
 function setView(v, opts = {}) {
   prevScores = view ? view.players.map((p) => p.score) : [];
   if (view && view.round !== v.round) {
-    prevCards = new Map();
-    prevDiscardId = null;
-    prevDeckCount = null;
-    roundEvents = [];
-    streak = 0;
-    roundBestStreak = 0;
-    pendingComboFx = 0;
+    resetRoundState();
   }
   // 回顾卡的原料：事件在服务端投递一次就清空，所以本轮的历史只能由客户端攒
   if (v.events && v.events.length) roundEvents = roundEvents.concat(v.events);
@@ -1437,21 +1463,21 @@ async function runAI() {
 
 async function startGame(e) {
   const name = ($('nameInput').value || '').trim() || '玩家';
-  const r = await api('/api/new', { name, ai: aiCount, level: aiLevel });
+  let r;
+  try {
+    r = await api('/api/new', { name, ai: aiCount, level: aiLevel });
+  } catch (err) {
+    toast('网络异常，请重试');
+    return;
+  }
   if (!r.ok) { toast(r.error || '开局失败'); return; }
   const c = centerOf(e && e.currentTarget);
   // 转场已经把屏幕盖住了，旧overlay直接切掉，不用再走一遍退场动画
   await circleWipe(c.x, c.y, () => {
     $('startOverlay').classList.add('hidden');
     $('app').classList.remove('hidden');
-    prevCards = new Map();
-    prevDiscardId = null;
-    prevDeckCount = null;
+    resetRoundState();
     prevScores = [];
-    roundEvents = [];
-    streak = 0;
-    roundBestStreak = 0;
-    pendingComboFx = 0;
     snd('start');
     applyView(r.view);
   });
@@ -1470,10 +1496,7 @@ function restartNow() {
   $('app').classList.add('hidden');
   $('startOverlay').classList.remove('hidden');
   view = null;
-  roundEvents = [];
-  streak = 0;
-  roundBestStreak = 0;
-  pendingComboFx = 0;
+  resetRoundState();
   sndMode('menu');
 }
 // 统一的按钮反馈音；用委托监听，动态生成的操作按钮也能覆盖到
