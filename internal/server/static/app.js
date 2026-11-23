@@ -57,9 +57,20 @@ function tone(card) {
   return 'low';
 }
 
-function initial(name) {
-  const s = (name || '').trim();
-  return s ? s[s.length - 1] : '?';
+// 气雾灵体：柔光雾团 + 素净五官，配色由所在容器的 --mist-* 变量决定（见 .p0–.p3）
+function mistFigure() {
+  return (
+    '<svg class="mist" viewBox="0 0 64 64" aria-hidden="true">' +
+    '<g class="puffs">' +
+    '<circle class="pa" cx="25" cy="34" r="9"/><circle class="pa" cx="40" cy="34" r="9"/>' +
+    '<circle class="pb" cx="32" cy="28" r="10"/><circle class="pc" cx="32" cy="39" r="11"/>' +
+    '</g>' +
+    '<circle class="core" cx="32" cy="36" r="12"/>' +
+    '<circle class="eye" cx="28" cy="35" r="2.1"/><circle class="eye" cx="36" cy="35" r="2.1"/>' +
+    '<circle class="glint" cx="28.6" cy="34.3" r=".6"/><circle class="glint" cx="36.6" cy="34.3" r=".6"/>' +
+    '<path class="mouth" d="M30 40q2 1.5 4 0"/>' +
+    '</svg>'
+  );
 }
 
 function pct(score) {
@@ -78,8 +89,10 @@ function isOppPickable() {
 function cardFace(card) {
   return (
     '<div class="face front">' +
+    '<i class="wash"></i>' +
     `<span class="rank">${esc(card.label)}</span>` +
-    (card.power ? `<span class="pw">${esc(card.powerZh)}</span>` : '') +
+    (card.power ? `<span class="tag">${esc(card.powerZh)}</span>` : '') +
+    '<i class="dot"></i>' +
     '</div>'
   );
 }
@@ -185,7 +198,7 @@ function renderSeats() {
     head.className = 'seat-head';
     head.innerHTML =
       '<span class="seat-id">' +
-      `<span class="avatar">${esc(initial(p.name))}</span>` +
+      `<span class="avatar">${mistFigure()}</span>` +
       `<span class="seat-name">${p.isTurn ? '<span class="dot"></span>' : ''}${esc(p.name)}` +
       '<span class="think"><i></i><i></i><i></i></span></span>' +
       '</span>' +
@@ -313,7 +326,7 @@ function renderMe() {
       ? `<span class="combo-chip" data-tier="${comboTier(streak)}" title="连续 ${streak} 次把自己已知的牌换成更小的">连击 ×${streak}</span>`
       : '';
   bar.innerHTML =
-    `<span class="avatar p0">${esc(initial(p.name))}</span>` +
+    `<span class="avatar p0">${mistFigure()}</span>` +
     `<span>${esc(p.name)}</span>` +
     `<b>${p.score} 分</b>` +
     `<span class="me-progress"><i style="width:${pct(p.score)}%"></i></span>` +
@@ -1333,7 +1346,8 @@ function renderOverlay() {
   view.players.forEach((p, i) => {
     const from = prevScores[i] === undefined ? 0 : prevScores[i];
     const pct = Math.min(100, (p.score / 100) * 100);
-    html += `<div class="score-row ${i === 0 ? 'me' : ''}" style="animation-delay:${i * 70}ms">
+    html += `<div class="score-row p${i}${i === 0 ? ' me' : ''}" style="animation-delay:${i * 70}ms">
+      <span class="avatar">${mistFigure()}</span>
       <span class="nm">${esc(p.name)}</span>
       <span class="gain">+${p.roundPts}</span>
       <span class="bar"><i style="width:${pct}%;animation-delay:${i * 70 + 120}ms"></i></span>

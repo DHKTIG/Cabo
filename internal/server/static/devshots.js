@@ -102,6 +102,33 @@
     return;
   }
 
+  if (scene === 'measure') {
+    await settle();
+    const g = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return [Math.round(r.top), Math.round(r.bottom)];
+    };
+    const t = document.querySelector('.table');
+    const d = document.createElement('div');
+    d.id = 'measure-out';
+    d.textContent = JSON.stringify({
+      vh: innerHeight,
+      table: g('.table'),
+      tableScroll: t.scrollHeight,
+      seats: g('.seats'),
+      middle: g('.middle'),
+      me: g('.me'),
+      hand: g('.hand'),
+      card: g('.hand .card'),
+      actions: g('.actions'),
+      actionsKids: document.getElementById('actions').children.length,
+    });
+    document.body.appendChild(d);
+    return;
+  }
+
   if (scene === 'cabo') {
     showCaboBanner(0);
     return;
