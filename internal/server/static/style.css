@@ -925,6 +925,169 @@ body {
   letter-spacing: 0.4px;
 }
 
+/* ---------- 转场与「完成」演出 ---------- */
+
+/* 圆形扩散转场：从落点铺满整屏，再原路收回，中间那一拍换画面 */
+.wipe {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  pointer-events: none;
+  background: var(--surface);
+  border-radius: 0;
+  clip-path: circle(0px at var(--wx) var(--wy));
+}
+.wipe::after {
+  content: "";
+  position: absolute;
+  left: var(--wx);
+  top: var(--wy);
+  width: 12px;
+  height: 12px;
+  margin: -6px;
+  border-radius: 50%;
+  background: var(--sun);
+}
+
+/* done 演出：圆环收拢 → 描出勾 → 一圈小粒子迸开。
+   .burst 是个零尺寸的点，圆环和粒子都以它为原点，
+   否则粒子会从圆环的左上角飞出去。 */
+.burst {
+  position: fixed;
+  z-index: 70;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.burst-ring {
+  position: absolute;
+  left: -23px;
+  top: -23px;
+  width: 46px;
+  height: 46px;
+  overflow: visible;
+}
+/* 没有那把勾之后，「迸开」这件事得靠形状自己说清楚：
+   实心色块弹大 + 一圈向外扩散的光环 + 更多更大的粒子。 */
+.burst-ring circle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.burst-ring .core {
+  fill: var(--tone);
+  animation: burstCore 0.52s var(--e-swing) forwards;
+}
+.burst-ring .halo {
+  fill: none;
+  stroke: var(--tone);
+  stroke-width: 2.6;
+  animation: burstHalo 0.66s var(--e-out) forwards;
+}
+@keyframes burstCore {
+  0% { transform: scale(0.18); opacity: 0; }
+  26% { transform: scale(1); opacity: 0.95; }
+  62% { transform: scale(0.92); opacity: 0.8; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+@keyframes burstHalo {
+  0% { transform: scale(0.3); opacity: 0.9; }
+  70% { opacity: 0.28; }
+  100% { transform: scale(2.15); opacity: 0; }
+}
+.burst i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+  animation: burstDot 0.72s var(--e-out) forwards;
+}
+.burst i[data-k="big"] { width: 8px; height: 8px; background: var(--coral); }
+@keyframes burstDot {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  18% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  64% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.86); opacity: 0.9; }
+  100% { transform: translate(calc(-50% + var(--tx) * 1.25), calc(-50% + var(--ty) * 1.25)) scale(0.2); opacity: 0; }
+}
+
+/* 一个动作惊动三处 */
+.sync { animation: syncPop 0.5s var(--e-spring); }
+@keyframes syncPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+.me-progress.sync i { transition-duration: 0.5s; }
+
+/* 停稳之后才画出的那条线 */
+.discard-holder .card.settled::before {
+  content: "";
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  bottom: -8px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--tone, var(--ink));
+  transform-origin: left center;
+  animation: drawLine 0.4s var(--e-out) both;
+}
+@keyframes drawLine {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* 点开弃牌堆：整叠牌向左摊成一条胶片，再点叠回去。
+   摊向上方会压到对手面板，横向留给牌桌中间的空位。 */
+.discard-holder .discard-fan .card {
+  transition: transform 0.42s var(--e-spring), opacity 0.3s var(--e-out), filter 0.3s;
+}
+.discard-holder.open { z-index: 12; }
+.discard-holder.open .discard-fan .card {
+  opacity: 1;
+  filter: none;
+}
+.discard-holder.open .discard-fan .card:nth-child(1) { transform: translate(-50%, -50%) translateX(-30px) rotate(-1.6deg); z-index: 6; }
+.discard-holder.open .discard-fan .card:nth-child(2) { transform: translate(-50%, -50%) translateX(-58px) rotate(1.2deg); z-index: 5; }
+.discard-holder.open .discard-fan .card:nth-child(3) { transform: translate(-50%, -50%) translateX(-86px) rotate(-1deg); z-index: 4; }
+.discard-holder.open .discard-fan .card:nth-child(4) { transform: translate(-50%, -50%) translateX(-114px) rotate(1.4deg); z-index: 3; }
+.discard-holder.open .discard-fan .card:nth-child(5) { transform: translate(-50%, -50%) translateX(-142px) rotate(-1.2deg); z-index: 2; }
+.discard-holder.open .discard-fan .card:nth-child(6) { transform: translate(-50%, -50%) translateX(-170px) rotate(0.8deg); z-index: 1; }
+
+/* 每张牌只露出左边一条，所以点数得搬到左上角才读得到 */
+.discard-holder.open .discard-fan .rank {
+  position: absolute;
+  left: 9px;
+  top: 5px;
+  font-size: 15px;
+  letter-spacing: -0.5px;
+  z-index: 2;
+}
+.discard-holder.open .discard-fan .pw { display: none; }
+.discard-holder.open .discard-fan .front::after { display: none; }
+
+#discardPile { cursor: pointer; }
+.pile-tag {
+  position: absolute;
+  left: 50%;
+  bottom: -30px;
+  transform: translateX(-50%);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: #FFFFFF;
+  background: var(--ink);
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s var(--e-out);
+}
+#discardPile.open .pile-tag { opacity: 1; }
+
 /* ---------- 浮动特效 ---------- */
 
 .fx { position: fixed; inset: 0; pointer-events: none; z-index: 60; }

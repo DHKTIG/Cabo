@@ -86,15 +86,16 @@ E:\Cabo\
 │       ├── stats_test.go        记录合并规则 + 跨启动往返
 │       └── static\              前端（编译时嵌入）
 │           ├── index.html
-│           ├── style.css        约 1790 行
-│           ├── app.js           约 1400 行
-│           └── audio.js         音频层（合成 + 配乐），约 910 行
+│           ├── style.css        约 1960 行
+│           ├── app.js           约 1560 行
+│           ├── audio.js         音频层（合成 + 配乐），约 960 行
+│           └── devshots.js      截图工装场景（只在 ?dev=1 加载，见 5.10）
 └── docs\
     ├── CABO-玩法详解.md         完整规则调研（含各版本差异）
     └── 开发准备清单.md          立项时的规划文档
 ```
 
-代码量：Go 约 2890 行（含测试约 980 行），前端约 4240 行。
+代码量：Go 约 2890 行（含测试约 980 行），前端约 4720 行。
 
 ---
 
@@ -219,6 +220,8 @@ setView(v, { skipCabo: true }); // 再切到新状态
 
 发牌斜飞入落定、3D 翻牌、弃牌落入、牌堆弹跳、洗牌（牌回堆 + 牌墩搓动 + 说明条）、飞牌（WAAPI 弧线）、胶囊提示、技能脉冲、连击弹跳 + 爆发字条、CABO 全屏横幅、座位呼吸光晕、结算回顾卡错峰揭开、结算条生长 + 数字滚动、对手思考小点。
 
+从参考视频补的六个（详见 5.9）：圆形扩散转场（开局 / 下一轮 / 重新开局）、喊 CABO 的 done 演出（色块弹大 + 外扩光环 + 粒子迸开，**勾已按用户要求去掉**）、一个动作三处联动、弃牌堆横向摊开、停稳后才画下划线、音量滑块吸附刻度带回弹。
+
 ### 5.5 运动语言（v12 重做）
 
 **别再往单个动画里手写 `cubic-bezier(...)`**，用 `:root` 里这组变量：
@@ -269,7 +272,7 @@ setView(v, { skipCabo: true }); // 再切到新状态
 - **总线**：`sfxBus` / `musicBus` → `ducker` → `master` → `limiter`（DynamicsCompressor，阈值 -10 dB）→ destination。另有一条 `revIn → ConvolverNode → master` 的混响支路。
 - **混响**：没有 IR 文件，用「白噪声 × 幂衰减 + 单极低通 + 15 ms 预延迟」在运行时生成 2.1 秒的立体声冲激响应。
 - **音色基元**：`osc()`（振荡器 + 可选滤波 + 包络）、`noise()`（噪声 + 带通/高/低通）、`pluck()`（音乐盒/木琴：基音 + 微非谐泛音 + 敲击瞬态）、`bell()`（非谐泛音 2.76/5.4/8.93）、`bassNote()`、`flick()`（纸牌甩动 = 三段噪声瞬态）、`whoosh()`、`thud()`。
-- **27 个音效**：`ui select deselect deal settle shuffle flip draw discard place take land receive swap peek spy penalty error cabo start score combo comboBreak recap tick win lose`。`play(name, arg)` 是唯一入口，内部 try/catch，音频出错不影响牌局。
+- **29 个音效**：`ui select deselect deal settle shuffle flip draw discard place take land receive swap peek spy penalty error cabo start score combo comboBreak recap expand collapse tick win lose`。`play(name, arg)` 是唯一入口，内部 try/catch，音频出错不影响牌局。
 
 **按键反馈的接法**：`app.js` 底部一条委托监听 `document.addEventListener('click', e => { if (e.target.closest('button')) snd('ui') })`，动态生成的操作按钮和键盘 Enter 触发的 click 都能覆盖。
 
@@ -321,6 +324,43 @@ setView(v, { skipCabo: true }); // 再切到新状态
 - **「没记录」用 -1，不能用 0**：0 点是这一局能拿到的最好结果，拿它当空值会让第一次真 0 分和空档分不清。
 - 上报由 `reportStats()` 在结算面板渲染时触发，**`roundEvents` 为空就跳过**——刷新页面重进结算时事件是空的，不跳过会把计数翻倍。
 - 顶栏 `#careerChip` 显示这五个数，读不到就整块 `.hidden`，不影响牌局。
+
+### 5.9 参考视频搬来的六个动效
+
+用户给了一段交互设计参考视频（《APP INTERACTION DESIGN VOL.03》，6 个微交互），要求照它的动效改游戏。**结论先说：配色改动已全部回退，只留动效。**
+
+> ⚠️ 中途把整套令牌换成过另一套（纸面 `#EFEDE9` / 墨黑牌背 / 青柠 0 分牌 / 等宽微标签 / 黑底药丸），截图也拍了。用户看完明确说「先把颜色全部换回之前的颜色，只改变动画效果」。**别再往回改色**，要动色先问。回退的做法：`git checkout -- style.css` 后只把动效那一段以**纯新增**的方式插回去（`git diff --stat` 显示 style.css 只有 insertions、没有 deletions，就是这个意思），并确认 `--mono/--rule/--lime/--cobalt` 这些新令牌引用清零、没有悬空 `var()`。
+
+搬进来的六个（对应视频编号）：
+
+| 视频 | 落到游戏里 | 入口 |
+|---|---|---|
+| ⑥ 圆形扩散转场 | 从按钮位置铺开一个圆盖住屏幕，中间那一拍换画面，再原路收回 | `circleWipe(x,y,atCover)`，接在 `startGame` / `nextRound` / `restart` |
+| ① 完成反馈按钮 | 实心色块弹大 + 一圈向外扩散的光环 + 18 颗粒子迸开。**原本还有一把描出来的勾，用户明确要去掉**；去掉后必须把圆环和粒子加强，否则整个演出在奶油底上几乎看不见 | `doneBurst(el, tone, hold)`，接在 `callCabo` |
+| ② 一个动作三处联动 | 自己 place/take/discard 之后，进度条 + 估值 + 连击标识一起弹一下 | `syncFlash()`，在 `act()` 里延时 260ms |
+| ③ 叠卡展开 / 整齐叠回 | 点弃牌堆，整叠向左摊成一条胶片（6 张）；再点叠回 | `toggleDiscard()` + `.discard-holder.open`，`view.go` 的 `DiscardUnder` 放到 6 张 |
+| ④ 停稳后才画线 | 弃牌堆顶牌落定 440ms 后，才描一条 `--tone` 色下划线 | `.card.settled::before` + `drawLine` |
+| ⑤ 惯性 + 吸附回弹 | 音量滑块松手吸到 0/25/50/75/100，用阻尼振荡 `exp(-5.5t)·cos(8.5t)` 过头再弹回 | `audio.js` 的 slider `change` 处理 |
+
+几个实现上的坑，改之前先看：
+
+- **`element.animate().finished` 在页面不可见时永远不 resolve。** 窗口最小化或切后台时 WAAPI 时间线不推进，`await startGame()` 就挂死，等于「点开始游戏没反应」。`circleWipe` 因此用 `Promise.race` 兜了 1.5s 超时，并用 `swapped` 标志保证 `atCover` 只执行一次。**任何 await 动画都要这么兜**。
+- **转场期间不要用退场动画**。`startGame` 原来是 `hideOverlay(startOverlay)`，现在直接 `.add('hidden')`——屏幕已经被圆盘盖住了，再播 330ms 退场纯属浪费。
+- **`.burst` 必须是零尺寸的点**（`width:0;height:0`，圆环用 `left:-23px;top:-23px` 反推居中）。有尺寸的 `.burst` 配 `transform:translate(-50%,-50%)` 时，子元素按 0,0 定位，粒子会从圆环**左上角**飞出去。
+- **摊开弃牌堆只能横向**。先做的向上摊会压进对手面板（牌桌中间没那么多竖向空间）。横向时每张只露出左边一条，所以点数必须搬到左上角（`.open .discard-fan .rank`）才读得到。
+- **只翻 class，不重建 DOM**：`toggleDiscord` 直接 `classList.toggle('open')`。走 `renderMiddle()` 重建的话，展开/收拢的补间会直接消失。
+
+### 5.10 截图工装（`?dev=1` + `devshots.js`）
+
+动效没法靠读代码验收，所以留了一套推画面的工装：
+
+- `app.js` 末尾在 `location.search` 含 `dev=1` 时挂 `window.__cab`（读写 `view/streak/roundEvents/career`、`idle()` 判断 AI 循环是否停手）并按需加载 `devshots.js`。**exe 自己生成的 URL 不带这个参数，对玩家是死代码。**
+- `devshots.js` 提供场景：`start / table / combo / recap / discard / burst / place / cabo`。
+- 起服务：`server.New()` 之外再套一层，把 `/api/*` 交给游戏、其余走 `http.FileServer(http.Dir("../internal/server/static"))` —— **静态资源读磁盘，改 CSS/JS 不用重新编译重启**。
+- 出图：无头 Edge `--headless=new --virtual-time-budget=… --screenshot=…`，每次都要独立的 `--user-data-dir`。
+- **两个必须知道的限制**：① 同源 iframe 工装在无头 Edge 下不执行脚本（推画面的逻辑只能放在页面自己里）；② 页面不可见会节流 rAF 和 CSS 动画，带 `both` 填充的入场动画永远停在 0% 不可见、`countUp` 停在起始值 —— 所以**验版式要加 `--force-prefers-reduced-motion`（把动画压成终态），验动效不能加**。
+- 无头截图里 `setTimeout` 也走虚拟时间、跑得飞快：`doneBurst` 的 1s 自清理会把粒子收走，所以它带一个 `hold` 参数给工装用。
+- 结算面板有「同一轮只渲染一次」的守卫，工装重推画面前要把 `ov.dataset.round/over` 清空，否则第二次 render 直接 return。
 
 ---
 

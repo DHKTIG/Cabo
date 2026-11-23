@@ -24,6 +24,7 @@ let roundBestStreak = 0;
 let roundEvents = [];
 let career = null;
 let pendingComboFx = 0;
+let discardOpen = false;
 
 // audio.js 提供 window.snd；音频起不来时静默降级，不能影响牌局
 const snd = (...a) => window.snd && window.snd(...a);
@@ -238,6 +239,7 @@ function renderMiddle() {
 
   const holder = document.querySelector('.discard-holder');
   if (holder) {
+    holder.classList.toggle('open', discardOpen);
     holder.innerHTML = '';
     if (view.discardUnder && view.discardUnder.length) {
       const fan = document.createElement('div');
@@ -256,7 +258,11 @@ function renderMiddle() {
       el.className = 'card';
       el.dataset.tone = tone(view.discardTop);
       el.innerHTML = cardFace(view.discardTop);
-      if (prevDiscardId !== view.discardTop.id) el.classList.add('dropIn');
+      if (prevDiscardId !== view.discardTop.id) {
+        el.classList.add('dropIn');
+        // 参考稿那条「卡一停稳，线才画出」：等落牌动画结束再描下划线
+        setTimeout(() => el.classList.add('settled'), 440);
+      }
       holder.appendChild(el);
       prevDiscardId = view.discardTop.id;
     } else {
@@ -484,7 +490,13 @@ function doPeek() { act({ type: 'peek', indices: picked.slice() }); }
 function doClaim() { act({ type: 'takeDiscard', indices: picked.slice() }); }
 function doPlace() { act({ type: 'place', indices: picked.slice() }); }
 function doSwap() { act({ type: 'usePower', targets: swapPicks.slice() }); }
-function callCabo() { act({ type: 'callCabo' }); }
+
+// 喊 CABO 是这局真正的「完成」键：先把 done 演出放出去，再交给服务端结算。
+// 单机本地接口不会失败，所以这里用乐观演出换跟手感。
+function callCabo(e) {
+  doneBurst(e && e.currentTarget, 'var(--sun)');
+  act({ type: 'callCabo' });
+}
 
 async function act(body) {
   if (busy || animating) return;
@@ -494,7 +506,10 @@ async function act(body) {
   busy = false;
   if (!r.ok) { toast(r.error); return; }
   judgeStreak(before, body, r.view);
+  const mine = body.type === 'place' || body.type === 'takeDiscard' || body.type === 'discardPending';
   applyView(r.view);
+  // 一个动作同时惊动分数、进度条和估值，别只让数字悄悄变
+  if (mine) setTimeout(syncFlash, 260);
 }
 
 /* ---------------- 连击（累积式反馈） ---------------- */
@@ -561,13 +576,14 @@ function comboFlare(text, color, n) {
   setTimeout(() => el.remove(), 1100);
 }
 
-async function nextRound() {
+async function nextRound(e) {
   if (busy) return;
   busy = true;
+  const c = centerOf(e && e.currentTarget);
   const r = await api('/api/next', {});
   busy = false;
   if (!r.ok) { toast(r.error); return; }
-  applyView(r.view);
+  await circleWipe(c.x, c.y, () => applyView(r.view));
 }
 
 // .hidden 是 display:none，退场动画必须先播完再挂上，否则直接被砍掉
@@ -617,6 +633,103 @@ function seatHandRect(pid) {
 function cardRect(pid, slot) {
   const el = document.querySelector(`.card[data-ref="${pid}:${slot}"]`);
   return el ? el.getBoundingClientRect() : seatHandRect(pid);
+}
+
+/* ---------------- 转场与「完成」演出 ---------------- */
+
+// 圆形扩散转场：从指落点铺满整屏，再原路收回去露出新画面。
+// clip-path: circle() 在 Chromium 里可以直接补间，所以不用 @property。
+function circleWipe(x, y, atCover) {
+  if (reduceMotion()) {
+    atCover();
+    return Promise.resolve();
+  }
+  const el = document.createElement('div');
+  el.className = 'wipe';
+  el.style.setProperty('--wx', x + 'px');
+  el.style.setProperty('--wy', y + 'px');
+  $('fx').appendChild(el);
+  const far = (cx, cy) => Math.hypot(cx - x, cy - y);
+  const r = Math.max(
+    far(0, 0),
+    far(innerWidth, 0),
+    far(0, innerHeight),
+    far(innerWidth, innerHeight)
+  ) + 40;
+  const grow = [
+    { clipPath: 'circle(0px at var(--wx) var(--wy))' },
+    { clipPath: `circle(${r}px at var(--wx) var(--wy))` },
+  ];
+  const shrink = [grow[1], grow[0]];
+  const run = (kf, dur, delay) =>
+    el.animate(kf, { duration: dur, delay, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'forwards' }).finished;
+  // 窗口最小化或切后台时 WAAPI 不推进，finished 会永远挂着 —— 那等于「点开始游戏没反应」。
+  // 所以整条链兜一个超时：动画放不出来也必须把画面换过去，但只能换一次。
+  let swapped = false;
+  const cover = () => {
+    if (swapped) return;
+    swapped = true;
+    atCover();
+  };
+  const chain = run(grow, 420, 0).then(() => {
+    cover();
+    return run(shrink, 460, 60);
+  });
+  const guard = sleep(1500).then(cover);
+  return Promise.race([chain, guard]).catch(cover).then(() => el.remove());
+}
+
+const centerOf = (el) => {
+  const b = el && el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+  if (!b || !b.width) return { x: innerWidth / 2, y: innerHeight / 2 };
+  return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+};
+
+// 「完成」演出：一块色圆收拢放大 → 一圈小粒子迸开。
+// 用在喊 CABO 上——这是这局游戏真正的 done。用户明确不要那把勾，只留动势。
+function doneBurst(el, tone, hold) {
+  if (!el || reduceMotion()) return;
+  const { x, y } = centerOf(el);
+  const layer = document.createElement('div');
+  layer.className = 'burst';
+  layer.style.left = x + 'px';
+  layer.style.top = y + 'px';
+  const n = 18;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + 0.22;
+    const d = 44 + (i % 4) * 15;
+    const p = document.createElement('i');
+    p.style.setProperty('--tx', Math.cos(a) * d + 'px');
+    p.style.setProperty('--ty', Math.sin(a) * d + 'px');
+    p.style.animationDelay = 90 + (i % 5) * 24 + 'ms';
+    if (i % 4 === 0) p.dataset.k = 'big';
+    layer.appendChild(p);
+  }
+  layer.insertAdjacentHTML(
+    'afterbegin',
+    `<svg class="burst-ring" viewBox="0 0 44 44" style="--tone:${tone || 'var(--sun)'}">
+       <circle class="halo" cx="22" cy="22" r="20"></circle>
+       <circle class="core" cx="22" cy="22" r="14"></circle>
+     </svg>`
+  );
+  $('fx').appendChild(layer);
+  // hold 只给截图工装用：无头页面的虚拟时间跑得飞快，1s 就收走永远拍不到
+  setTimeout(() => layer.remove(), hold || 1000);
+}
+
+// 一个动作同时惊动三处：分数、进度条、已知点数估值。
+// 参考稿那条「一个动作三处起变」是它最上瘾的地方，牌局里正好对应得上。
+function syncFlash() {
+  if (reduceMotion()) return;
+  const bar = $('meBar');
+  if (!bar) return;
+  ['.me-progress', '.me-est', '.combo-chip'].forEach((sel) => {
+    const el = bar.querySelector(sel);
+    if (!el) return;
+    el.classList.remove('sync');
+    void el.offsetWidth;
+    el.classList.add('sync');
+  });
 }
 
 /* ---------------- 飞牌 ---------------- */
@@ -1322,25 +1435,34 @@ async function runAI() {
   }
 }
 
-async function startGame() {
+async function startGame(e) {
   const name = ($('nameInput').value || '').trim() || '玩家';
   const r = await api('/api/new', { name, ai: aiCount, level: aiLevel });
   if (!r.ok) { toast(r.error || '开局失败'); return; }
-  snd('start');
-  hideOverlay($('startOverlay'));
-  $('app').classList.remove('hidden');
-  prevCards = new Map();
-  prevDiscardId = null;
-  prevDeckCount = null;
-  prevScores = [];
-  roundEvents = [];
-  streak = 0;
-  roundBestStreak = 0;
-  pendingComboFx = 0;
-  applyView(r.view);
+  const c = centerOf(e && e.currentTarget);
+  // 转场已经把屏幕盖住了，旧overlay直接切掉，不用再走一遍退场动画
+  await circleWipe(c.x, c.y, () => {
+    $('startOverlay').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    prevCards = new Map();
+    prevDiscardId = null;
+    prevDeckCount = null;
+    prevScores = [];
+    roundEvents = [];
+    streak = 0;
+    roundBestStreak = 0;
+    pendingComboFx = 0;
+    snd('start');
+    applyView(r.view);
+  });
 }
 
-function restart() {
+function restart(e) {
+  const c = centerOf(e && e.currentTarget);
+  circleWipe(c.x, c.y, () => restartNow());
+}
+
+function restartNow() {
   const ov = $('roundOverlay');
   ov.classList.add('hidden');
   ov.dataset.round = '';
@@ -1376,6 +1498,18 @@ $('levelPicker').addEventListener('click', (e) => {
 $('btnStart').addEventListener('click', startGame);
 $('btnRestart').addEventListener('click', restart);
 
+// 点开弃牌堆：整叠牌展开成能读的一列，再点叠回去。
+// 只翻 class，不重建 DOM —— 重建会让展开/收拢的补间直接消失。
+function toggleDiscard() {
+  discardOpen = !discardOpen;
+  const holder = document.querySelector('.discard-holder');
+  const pile = $('discardPile');
+  if (holder) holder.classList.toggle('open', discardOpen);
+  if (pile) pile.classList.toggle('open', discardOpen);
+  snd(discardOpen ? 'expand' : 'collapse');
+}
+$('discardPile').addEventListener('click', toggleDiscard);
+
 api('/api/state').then((r) => {
   if (r && r.ready && r.view) {
     $('startOverlay').classList.add('hidden');
@@ -1391,3 +1525,35 @@ api('/api/stats').then((r) => {
     renderCareer();
   }
 });
+
+// ?dev=1 才挂：把内部状态和渲染函数交给 window，并加载 devshots.js 里的画面场景，
+// 供无头截图工装用 ?dev=1&shot=recap 直接把界面推到某个状态。
+// 正式入口的 URL 由 exe 生成，不带这个参数，所以对玩家是死代码。
+if (location.search.includes('dev=1')) {
+  window.__cab = {
+    get: () => ({ view, streak, roundEvents, career, roundBestStreak }),
+    // AI 循环会自己 applyView 覆盖外部推进去的画面，工装必须先等它停手
+    idle: () => !busy && !animating && !aiRunning,
+    apply: (p) => {
+      if (p.view) setView(p.view);
+      if (p.roundEvents) roundEvents = p.roundEvents;
+      if (typeof p.streak === 'number') streak = p.streak;
+      if (typeof p.roundBestStreak === 'number') roundBestStreak = p.roundBestStreak;
+      if (p.career) {
+        career = p.career;
+        renderCareer();
+      }
+      // 结算面板有「同一轮只渲染一次」的守卫，工装要重推画面必须先把它清掉，
+      // 否则第二次 render() 直接 return，看到的还是第一次（真实事件）的结果。
+      const ov = $('roundOverlay');
+      if (ov) {
+        ov.dataset.round = '';
+        ov.dataset.over = '';
+      }
+      render();
+    },
+  };
+  const s = document.createElement('script');
+  s.src = 'devshots.js';
+  document.head.appendChild(s);
+}

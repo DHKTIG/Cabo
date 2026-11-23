@@ -87,8 +87,8 @@ func ViewFor(s State, me int) View {
 	if len(s.Discard) > 0 {
 		cv := newCardView(s.Discard[len(s.Discard)-1])
 		v.DiscardTop = &cv
-		// 顶牌之下的最近几张也是公开信息，前端拿去做弃牌扇
-		for i := len(s.Discard) - 2; i >= 0 && len(v.DiscardUnder) < 3; i-- {
+		// 顶牌之下的最近几张也是公开信息：前端拿它做弃牌扇，点开时摊成一列给人翻检
+		for i := len(s.Discard) - 2; i >= 0 && len(v.DiscardUnder) < 6; i-- {
 			v.DiscardUnder = append(v.DiscardUnder, newCardView(s.Discard[i]))
 		}
 	}

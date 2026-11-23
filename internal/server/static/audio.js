@@ -490,6 +490,17 @@
           this.thud(t + 0.62, { gain: 0.17, from: 140, to: 60, dur: 0.16 });
           this.thud(t + 0.7, { gain: 0.12, from: 120, to: 56, dur: 0.14 });
         },
+        // 摊开 / 叠回一叠牌：纸牌滑开的沙沙声，反过来就是收拢
+        expand(t) {
+          this.whoosh(t, { dur: 0.3, gain: 0.06, from: 700, to: 2200, send: 0.12 });
+          for (let i = 0; i < 5; i++) {
+            this.flick(t + 0.03 + i * 0.045, { gain: 0.07 + i * 0.012, bp: 2200 + i * 260, pan: -0.3 + i * 0.15 });
+          }
+        },
+        collapse(t) {
+          for (let i = 0; i < 4; i++) this.flick(t + i * 0.04, { gain: 0.09 - i * 0.014, bp: 2600 - i * 260, pan: 0.3 - i * 0.15 });
+          this.thud(t + 0.16, { gain: 0.13, from: 130, to: 60, dur: 0.14 });
+        },
         flip(t) {
           this.flick(t, { gain: 0.2, bp: 3000, send: 0.12 });
           this.osc(t + 0.02, 640, { to: 900, dur: 0.09, gain: 0.08, attack: 0.004 });
@@ -780,12 +791,44 @@
       r.type = 'range';
       r.min = '0';
       r.max = '100';
+      r.step = '1';
       r.className = 'snd-range';
       r.dataset.key = key;
       r.value = String(Math.round(prefs[key] * 100));
-      r.addEventListener('input', () => setVolume(key, Number(r.value) / 100));
       const v = document.createElement('b');
       v.textContent = r.value + '%';
+      r.addEventListener('input', () => {
+        cancelAnimationFrame(raf);
+        setVolume(key, Number(r.value) / 100);
+        v.textContent = r.value + '%';
+      });
+
+      // 松手吸到最近的 25% 刻度，并且像参考稿那样「过头一点再弹回来」：
+      // 用阻尼振荡而不是直接赋值，硬吸附摸起来像卡住了。
+      let raf = 0;
+      r.addEventListener('change', () => {
+        const from = Number(r.value);
+        const to = Math.round(from / 25) * 25;
+        if (to === from) return;
+        const t0 = performance.now();
+        const dur = 340;
+        const step = (now) => {
+          const k = Math.min(1, (now - t0) / dur);
+          const eased = to + (from - to) * Math.exp(-5.5 * k) * Math.cos(8.5 * k);
+          r.value = String(Math.round(clamp(eased, 0, 100)));
+          v.textContent = r.value + '%';
+          if (k < 1) {
+            raf = requestAnimationFrame(step);
+          } else {
+            r.value = String(to);
+            v.textContent = to + '%';
+            setVolume(key, to / 100);
+          }
+        };
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(step);
+      });
+
       row.appendChild(t);
       row.appendChild(r);
       row.appendChild(v);
