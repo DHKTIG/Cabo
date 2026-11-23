@@ -94,7 +94,7 @@ func main() {
 	}()
 
 	browserMode := flag.Bool("browser", false, "用系统浏览器打开，不启动原生窗口")
-	debug := flag.Bool("debug", false, "开启调试（窗口内可右键检查元素）")
+	debugMode := flag.Bool("debug", false, "开启调试（窗口内可右键检查元素）")
 	port := flag.Int("port", 0, "本地服务端口，0 表示自动分配")
 	logTo := flag.Bool("log", false, "额外记录每个 HTTP 请求到 cabo.log")
 	flag.Parse()
@@ -132,7 +132,7 @@ func main() {
 	}()
 
 	if !*browserMode {
-		if err := runWindow(url, *debug); err == nil {
+		if err := runWindow(url, *debugMode); err == nil {
 			logf("窗口正常退出")
 			return
 		} else {
