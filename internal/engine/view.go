@@ -10,12 +10,13 @@ type CardView struct {
 }
 
 func newCardView(c Card) CardView {
+	pw := c.Power()
 	return CardView{
 		ID:      c.ID,
 		Label:   c.Label(),
 		Points:  c.Points(),
-		Power:   c.Power().String(),
-		PowerZh: c.Power().Label(),
+		Power:   pw.String(),
+		PowerZh: pw.Label(),
 	}
 }
 
@@ -45,7 +46,6 @@ type Can struct {
 	DrawDeck       bool `json:"drawDeck"`
 	TakeDiscard    bool `json:"takeDiscard"`
 	DiscardPending bool `json:"discardPending"`
-	PlacePending   bool `json:"placePending"`
 	UsePower       bool `json:"usePower"`
 	CallCabo       bool `json:"callCabo"`
 }
@@ -130,7 +130,6 @@ func ViewFor(s State, me int) View {
 			v.Can.CallCabo = s.Caller < 0
 		case PhasePlace:
 			v.Can.DiscardPending = true
-			v.Can.PlacePending = true
 			v.Can.UsePower = s.Pending != nil && s.Pending.Power() != PowerNone
 		}
 	}
