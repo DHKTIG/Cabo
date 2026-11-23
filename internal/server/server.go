@@ -3,6 +3,7 @@ package server
 import (
 	"embed"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"math/rand"
 	"net/http"
@@ -94,7 +95,8 @@ func (s *Server) handleNew(w http.ResponseWriter, r *http.Request) {
 		AI    int    `json:"ai"`
 		Level int    `json:"level"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	// 与 stats/prefs 一致限制请求体大小；解码失败时沿用零值默认（AI 会被钳到 1、名字用默认），不中断开局
+	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req)
 	if req.AI < 1 {
 		req.AI = 1
 	}
