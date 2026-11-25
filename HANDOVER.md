@@ -1,512 +1,989 @@
-# CABO 项目交接文档
+# CABO 项目总览与交接
 
-> 最后更新：2026-10-29 23:47
-> 给接手的人（或下一个模型）看的。读完这份就能直接继续干活，不需要回溯对话。
-
----
-
-## 一、现在是什么状态
-
-一个用 Go 写的单机版 CABO 卡牌游戏，**已经能跑、能玩完整一局**。
-
-- 产物：`E:\Cabo\cabo.exe`（7.3 MB），**双击直接弹出一个原生窗口**，不经过浏览器。
-- 窗口里是「你 vs 1–3 个电脑对手」，打到有人超过 100 分结束。
-- 规则、AI、界面、动画全部完成；测试全绿（`go test ./...`）。
-- 原生窗口基于 WebView2（系统自带运行时），前端仍然是 HTML/CSS/JS，编译时嵌入二进制。
-
-**一句话：功能完整（含配乐与音效），视觉打磨过两轮，现在处于「可以交付给朋友玩」的阶段。**
+> 更新日期：2026-11-25
+> 本文是除 `README.md` 外的唯一项目文档，合并了原 `HANDOVER.md`、`docs/CABO-玩法详解.md`、`docs/开发准备清单.md`、`.trae/PROJECT_MEMORY.md` 和 `.trae/rules/git-commit-message.md`。
+> `README.md` 面向玩家；本文面向开发、维护和继续迭代。
 
 ---
 
-## 二、怎么跑
+## 1. 当前状态
 
-### 用户视角
+CABO 是一个用 Go 编写的单机版卡牌游戏：玩家对战 1–3 个电脑对手，双击 exe 后通过 WebView2 打开原生窗口，不需要浏览器，也不需要安装 Go 或 Node。
 
-双击 `cabo.exe`，等 1–2 秒弹出窗口，直接开始。
+当前已实现：
+
+- 完整对局流程与第二版规则口径；
+- 三档启发式 AI；
+- 单局 HTTP 服务与内嵌前端；
+- 透明水玻璃、3D 牌桌装饰、气雾角色视觉；
+- 发牌、翻牌、飞牌、洗牌、置换、CABO、结算等动效；
+- Web Audio 实时合成配乐与音效，无音频素材文件；
+- 音量设置、生涯统计、连击和回合回顾；
+- Windows 图标资源、CI、规则/AI/HTTP/持久化测试。
+
+2026-11-25 目录整理后执行过 `go test ./...`，全部通过。当前 Go 源码约 2889 行，前端约 4871 行，Go 侧有 24 个测试函数。
+
+### 1.1 当前目录
+
+```text
+E:\Cabo\
+├── README.md                         玩家说明
+├── HANDOVER.md                       本文：唯一项目文档
+├── LICENSE                           MIT
+├── go.mod / go.sum
+├── .github/                          CI、Issue 模板、Dependabot
+├── cmd/
+│   └── cabo/
+│       ├── main.go                   入口、参数、本地服务
+│       ├── window_windows.go         WebView2 窗口
+│       ├── window_other.go           非 Windows 占位实现
+│       ├── cabo.ico                  图标源文件
+│       └── rsrc_windows_amd64.syso   已生成的 Windows 图标资源
+├── internal/
+│   ├── engine/                       纯规则引擎
+│   │   ├── card.go                   牌、点数、能力、牌组
+│   │   ├── state.go                  状态、发牌、推进、结算
+│   │   ├── rules.go                  Apply：唯一规则入口
+│   │   ├── event.go                  结构化事件
+│   │   ├── view.go                   视角裁剪
+│   │   └── rules_test.go
+│   ├── ai/
+│   │   ├── ai.go                     三档启发式 AI
+│   │   └── ai_test.go                多种子完整对局与牌数守恒
+│   └── server/
+│       ├── server.go                 HTTP API + go:embed
+│       ├── prefs.go                  音量持久化
+│       ├── stats.go                  生涯统计持久化
+│       ├── errors.go                 规则错误哨兵
+│       ├── server_test.go
+│       ├── stats_test.go
+│       └── static/
+│           ├── index.html
+│           ├── style.css
+│           ├── app.js
+│           ├── audio.js
+│           └── devshots.js          仅 ?dev=1 加载
+├── docs/
+│   ├── screenshot-start.png          旧版截图
+│   ├── screenshot-play.png           旧版截图
+│   └── icon-preview.png
+└── artifacts/
+    ├── app/
+    │   ├── cabo.exe                  当前 GUI 成品
+    │   ├── cabo-dev.exe               当前调试成品
+    │   └── cabo_webview2_data/        WebView2 便携缓存
+    ├── logs/
+    │   └── cabo.log                   历史运行日志
+    ├── share/
+    │   └── index.html.zip             当前五个前端文件的分享快照
+    └── screenshots/
+        └── .tmp/                      截图临时目录
+```
+
+`docs/` 中的两张界面截图仍是旧奶油色版本，不代表当前水玻璃美术。
+
+---
+
+## 2. 运行与构建
+
+### 2.1 直接运行
+
+- 成品：[`artifacts/app/cabo.exe`](artifacts/app/cabo.exe)
+- 调试版：[`artifacts/app/cabo-dev.exe`](artifacts/app/cabo-dev.exe)
 
 | 参数 | 作用 |
 |---|---|
-| （无） | 原生窗口 |
-| `-browser` | 改用系统浏览器打开（窗口起不来时的退路） |
-| `-port 8848` | 固定端口，默认随机分配 |
-| `-debug` | 开启调试：窗口内可右键「检查元素」，并输出渲染自检日志 |
-| `-log` | 把请求日志写到 `%LOCALAPPDATA%\Cabo\cabo.log` |
+| 无参数 | 启动 WebView2 原生窗口 |
+| `-browser` | 改用系统浏览器 |
+| `-port N` | 固定本地端口；默认自动分配 |
+| `-debug` | 允许窗口内右键检查元素 |
+| `-log` | 额外记录每个 HTTP 请求 |
 
-窗口打不开会弹系统提示框，并自动退回浏览器模式。
+基础文件日志始终开启；`-log` 只控制 HTTP 请求日志。日志按顺序尝试写入用户缓存目录、exe 同目录和系统临时目录，文件名固定为 `cabo.log`。
 
-### 开发视角
+WebView2 缓存固定放在 exe 同目录的 `cabo_webview2_data/`，所以 exe 和缓存应作为整体移动。
+
+### 2.2 环境要求
+
+- Go 1.27，工具链 go1.27.3；
+- Windows 10/11；
+- 系统 WebView2 运行时；
+- 不需要 cgo、gcc、Node 或前端包管理器。
+
+主要依赖：
+
+- `github.com/jchv/go-webview2`
+- `golang.org/x/sys`
+
+### 2.3 构建命令
+
+本地整理后的推荐输出位置：
 
 ```bash
-cd E:/Cabo
-
-go test ./...                                              # 全部测试
-go build -ldflags="-s -w -H windowsgui" -o cabo.exe ./cmd/cabo   # 出成品
-go build -o cabo-dev.exe ./cmd/cabo                        # 出带控制台的调试版
+go test ./...
+go build -ldflags="-s -w -H windowsgui" -o artifacts/app/cabo.exe ./cmd/cabo
+go build -o artifacts/app/cabo-dev.exe ./cmd/cabo
 ```
 
-- **`-H windowsgui` 必须加**，否则会附带一个黑色控制台窗口。
-- 图标和版本信息由 `cmd/cabo/rsrc_windows_amd64.syso` 提供，**这个文件已经提交在仓库里，正常 build 不需要额外步骤**。只有改图标时才需要重新生成（见第八节）。
-- 加了这个参数后 `fmt.Println` 和 `log` 的输出全部丢失，所以诊断信息走 `-log` 的文件。
-- 环境要求：Go 1.22+（用了 `go:embed`）、Windows 10/11、WebView2 运行时（Win11 自带；本机版本 156.0.4314.50）。
-- **不需要 cgo**。用的是 `github.com/jchv/go-webview2`（纯 Go 绑定），所以不需要 gcc。
+`-H windowsgui` 必须加，否则会附带黑色控制台窗口。前端通过 `go:embed` 嵌入二进制，修改前端后必须重新构建。
 
----
+README 和 CI 仍保留根目录 `cabo.exe` 的输出约定；CI 只是构建并上传 Artifact，本地手动构建时可以把产物移动到 `artifacts/app/`。
 
-## 三、项目结构
+### 2.4 图标资源
 
-```
-E:\Cabo\
-├── cabo.exe                     构建产物（GUI 版，不纳入版本控制，发版走 GitHub Releases）
-├── go.mod / go.sum
-├── README.md                    给玩家看的说明
-├── HANDOVER.md                  本文件
-├── cmd\cabo\
-│   ├── main.go                  入口：解析参数、起本地服务、调窗口或浏览器
-│   ├── window_windows.go        WebView2 原生窗口
-│   ├── window_other.go          非 Windows 的占位实现
-│   ├── cabo.ico                 应用图标源文件
-│   └── rsrc_windows_amd64.syso  图标资源（rsrc 生成，已提交）
-├── internal\
-│   ├── engine\                  ★ 规则引擎，纯函数、零 I/O，最重要
-│   │   ├── card.go              牌、点数、技能判定、牌组构成
-│   │   ├── state.go             对局状态、发牌、推进、结算
-│   │   ├── rules.go             Apply()：唯一的规则入口
-│   │   ├── event.go             结构化事件，驱动前端动画
-│   │   ├── view.go              视角裁剪，防止暗牌泄漏
-│   │   └── rules_test.go        17 条规则用例
-│   ├── ai\
-│   │   ├── ai.go                启发式 AI
-│   │   └── ai_test.go           60 个种子 × 全程牌数守恒
-│   └── server\
-│       ├── server.go            HTTP 接口 + 静态资源
-│       ├── prefs.go             音量设置的持久化（写文件，见 5.6 节）
-│       ├── stats.go             生涯记录的持久化（同一个目录，见 5.8 节）
-│       ├── errors.go
-│       ├── server_test.go       端到端打完整局
-│       ├── stats_test.go        记录合并规则 + 跨启动往返
-│       └── static\              前端（编译时嵌入）
-│           ├── index.html
-│           ├── style.css        约 1960 行
-│           ├── app.js           约 1560 行
-│           ├── audio.js         音频层（合成 + 配乐），约 960 行
-│           └── devshots.js      截图工装场景（只在 ?dev=1 加载，见 5.10）
-└── docs\
-    ├── CABO-玩法详解.md         完整规则调研（含各版本差异）
-    └── 开发准备清单.md          立项时的规划文档
-```
+图标资源已经提交，正常构建不需要额外步骤。只有修改 `cabo.ico` 后才需要重新生成。
 
-代码量：Go 约 2890 行（含测试约 980 行），前端约 4720 行。
-
----
-
-## 四、核心设计（改之前务必先看）
-
-### 4.1 规则引擎是纯函数
-
-`engine.Apply(state, player, action) (State, error)` —— 不碰网络、文件、时钟，随机数通过注入的 `*rand.Rand` 提供。
-
-**这条约束不要破坏。** 它让引擎可以 100% 单测、可以用种子精确回放、可以脱离 UI 跑模拟。
-
-一个例外要留意：牌堆摸空要把弃牌堆洗回来，洗牌发生在 `Apply` 内部，所以 `NewGame` 注入的那台发生器被存在了 `State.rng`（不导出 → 不进 JSON，`Clone` 是浅拷贝所以指针跟着走，一局游戏始终是同一条随机流）。判「纯」的标准随之变成「同样的种子 + 同样的动作序列 = 同样的牌序」，回放仍然成立；但**不要**在 `Apply` 里碰时钟、文件或全局随机源。`NextRound(state)` 因此也不再收发生器参数。
-
-### 4.2 隐藏信息必须裁剪
-
-引擎内部知道所有牌，但发给客户端的报文只能包含该玩家有权看到的信息：
-
-```go
-v := engine.ViewFor(s.state, 0)  // 0 号玩家的视角
-```
-
-**绝对不能直接 `json.Marshal(state)`** —— 那会把所有人的暗牌发出去。
-
-`Slot.KnownBy []int` 记录「哪些玩家知道这张牌的内容」。牌被 SWAP 走时 `KnownBy` 会被重置，实现「半辅助记忆」：你开局看过的牌会一直显示，但一旦被别人换走，标记立刻清除。
-
-### 4.3 事件驱动动画
-
-引擎每次状态变化会写一条 `Event`（谁、做了什么、涉及哪张牌、指向哪个位置），服务端 `reply()` 投递一次后清空 `s.state.Events`。前端拿事件播动画，而不是解析文字日志。
-
-事件类型见 `internal/engine/event.go`：`roundStart / peek / draw / reshuffle / discard / place / take / penalty / spy / swap / cabo / score / reset / gameOver`。
-
-`reshuffle` 是「牌堆摸空、弃牌堆洗回来」，`player` 固定 `-1`（不是谁的动作），`value` 是洗回去的张数。前端据此演一段洗牌：牌从弃牌堆飞向牌堆、牌堆抖一下、在牌堆上方挂一条「弃牌堆洗回牌堆」说明条，配 `shuffle` 音效。它跟着触发它的那条 `draw` 一起到达，所以动画顺序天然正确：先洗完，再摸牌。
-
-### 4.4 先播动画，再切状态
-
-`app.js` 里 AI 走的是 `applyViewAnimated()`：
-
-```js
-await playFlights(v.events);   // 用旧画面播完飞牌
-setView(v, { skipCabo: true }); // 再切到新状态
-```
-
-这样「牌飞过去」和「牌落到堆里」是先后关系，而不是同时发生——顺序感就来自这里。**玩家自己的操作走同步路径**（`applyView`），保持跟手。
-
-### 4.5 牌组：没有花色
-
-牌面只有 `ID` 和 `Rank`，没有 `Suit` 字段。
-
-| 数字 | 张数 |
-|---|---|
-| 0 | 3 |
-| 1–12 | 各 4 |
-| 13 | 3 |
-
-合计 54 张，总点数 351，均值 6.5——和一副标准扑克（含两张王、方块 K 记 0）**统计上完全等价**。改牌组时注意保持这个分布，否则平衡性会变。
-
-### 4.6 规则口径（固定为第二版）
-
-| 规则点 | 采用 |
-|---|---|
-| 开局看牌 | 自选 2 张，看完位置不可变 |
-| 技能映射 | 7/8 看自己，9/10 看对手，11/12 交换 |
-| 从弃牌堆拿的牌 | 保持明牌 |
-| 1 换多的判定 | 换出的牌**彼此**同点（不是与被拿走的牌同点） |
-| 1 换多上限 | 3 张 |
-| 翻错惩罚 | 收下弃牌堆顶牌；涉及 ≥3 张再罚抽 1 张 |
-| 弃牌堆拿牌触发技能 | 不触发 |
-| 喊 CABO 后 | 其他人各行动一次，喊者手牌锁定不可被换 |
-| 平局 | 喊者胜 |
-| 牌堆摸空 | 把弃牌堆洗回牌堆继续，弃牌堆上留一张明牌（计数在 `State.Reshuffle`） |
-| 两堆都空 | 才结束本轮计分 |
-| 100 分重置 | 恰好 100，一场限一次 |
-| 超过 100 分 | 打满整轮再结算 |
-
-未实现：神风特攻队（两张 12 + 两张 13）彩蛋、线上版的 Burn 抢牌。两者都在引擎之外，加进来不用动核心规则。
-
----
-
-## 五、前端设计系统
-
-### 配色（浅色主题）
-
-```
---bg        #FBF6EC   奶油底
---surface   #FFFFFF   卡片/面板
---coral     #FF7A59   主强调（按钮、品牌、自己）
---teal      #1FA79A   玩家 1
---violet    #8B6FE8   玩家 2
---amber     #E8A33D   玩家 3
---ink       #2F2A24   主文字
---ink-2     #7A7166   次要
---ink-3     #A79C8E   提示
-```
-
-**注意：曾经是深靛蓝主题，用户明确反馈「太压抑」后整体翻成浅色。** 以后做新界面优先浅色。
-
-### 卡面色条编码
-
-左侧 6px 竖条用颜色表示技能类型，右上角是技能标（看/窥/换）：
-
-| 色值 | 含义 |
-|---|---|
-| `#E8A33D` 琥珀 | 0 分（最值钱） |
-| `#93A1B5` 石板 | 1–6 |
-| `#1FA79A` 青 | 7–8 透视 |
-| `#8B6FE8` 紫 | 9–10 窥探 |
-| `#F2823C` 橙 | 11–12 置换 |
-| `#E8544A` 红 | 13 高危 |
-
-**色条必须用 `linear-gradient` 画在 `background` 上，不能用绝对定位的 `::before`** —— 后者在圆角裁切下会渲染成一块独立的色块。
-
-### 界面语言
-
-**品牌名用英文 `CABO`，其余全部中文。**
-
-- 英文：顶栏 logo、首页大标题、`<title>`（`CABO 卡波`）、窗口标题、按钮「喊 CABO」、CABO 横幅、exe 属性（`--product-name "CABO"`、`--file-description "CABO 卡波"`）。
-- 中文：所有说明文字、提示、规则、结算面板。
-
-曾经试过全部改成中文「卡波」，用户反馈还是想要 CABO 的英文，已改回。改 logo 文案时记得同步 `.logo` / `.brand-cabo` 的 `letter-spacing`——英文用 5px/12px，中文要缩到 3px/10px，否则两个字会拉得很开。
-
-### 动效清单
-
-发牌斜飞入落定、3D 翻牌、弃牌落入、牌堆弹跳、洗牌（牌回堆 + 牌墩搓动 + 说明条）、飞牌（WAAPI 弧线）、胶囊提示、技能脉冲、连击弹跳 + 爆发字条、CABO 全屏横幅、座位呼吸光晕、结算回顾卡错峰揭开、结算条生长 + 数字滚动、对手思考小点。
-
-从参考视频补的六个（详见 5.9）：圆形扩散转场（开局 / 下一轮 / 重新开局）、喊 CABO 的 done 演出（色块弹大 + 外扩光环 + 粒子迸开，**勾已按用户要求去掉**）、一个动作三处联动、弃牌堆横向摊开、停稳后才画下划线、音量滑块吸附刻度带回弹。
-
-### 5.5 运动语言（v12 重做）
-
-**别再往单个动画里手写 `cubic-bezier(...)`**，用 `:root` 里这组变量：
-
-| 变量 | 值 | 用在哪 |
-|---|---|---|
-| `--e-out` | `cubic-bezier(.22,.61,.36,1)` | 常规减速、进度条、过渡 |
-| `--e-swing` | `cubic-bezier(.16,1.05,.3,1)` | 入场带回弹 |
-| `--e-spring` | `cubic-bezier(.34,1.46,.64,1)` | 座位上浮这类明显过冲 |
-| `--e-soft` | `cubic-bezier(.4,0,.2,1)` | 往复（思考小点） |
-| `--e-in` | `cubic-bezier(.55,0,.68,.19)` | 退场 |
-
-节奏：微反馈 ~160ms、入场 340–560ms、演出 900–2000ms。卡牌类动效一律带**过冲回落**（squash & stretch），这是「纸牌有重量」和「UI 元素在滑动」的区别。
-
-**几个必须知道的实现约束（都是踩出来的）：**
-
-- **翻牌必须从 `rotateY(88deg)` 起手**。之前从 -104° 开始，等于跳过了「侧成一条线」这个最关键的瞬间，牌面又全程清晰，看着只是牌在轻微倾斜。现在 0% 是一条窄缝 → 62% 越过正面带抬起 → 82% 回摆 → 100% 落定，配合 `.front::before` 的扫光。牌只有一个 `face`（暗牌内容根本不下发，做不了真假两面），所以 `.face { backface-visibility: hidden }` 是必要的。
-- **同一个元素上不要放两个 `animation`**。CSS 里 `animation` 是整体覆盖的，后写的规则会把先写的直接顶掉。踩过两次：① `.seat.receive` 顶掉 `.seat.active` 的呼吸动画 → 呼吸光和 receive 光环拆到 `::before` / `::after` 两层；② `.discard-holder.landing` 的 scale 和 `.card.dropIn` 抢 transform → frame 只做 `landDip` 下沉、冲击环走 `::after`、牌的入场留给 `.card.dropIn`。
-- **选中环要画在 `.card::after` 上，不能画在 `.front` 上**。开局挑 2 张看的时候四张牌全是背面，DOM 里根本没有 `.front` 元素，环画上去等于没有。
-- **音量弹层必须挂到 `document.body`，不能留在 `.snd` 里**。两个独立致因：① `.topbar` 有 `backdrop-filter`，会造出独立层叠上下文，弹层被困在里面，而 `.table` 在 DOM 里更靠后 → 弹层被牌桌整个盖住；② 首页 `.panel` 是 `overflow-y:auto` 的滚动容器，弹层会被裁掉。改成 `position: fixed` + `placePop()` 按按钮 rect 定位（左右夹进视口、下方放不下自动朝上翻），`z-index: 95`（高于 `.overlay` 的 80）。
-- **弹层显隐用 `visibility + opacity` 的 `.open` 类，不要用 `hidden` 属性**。`hidden` 有两个坑：作者写的 `display:flex` 会盖掉 UA 的 `[hidden]{display:none}`（害弹层永远展开着压在牌桌上）；而 `display` 的有无切换又会让元素脱离渲染树、脚本翻回可见时可能赶不上那一帧重绘。`visibility` 方案让元素常驻渲染树，切换只是属性变化，顺带还拿到淡入。
-- **无头截图看不到「脚本执行后才翻为可见」的 fixed 元素**。实测弹层所有诊断值都对（`display:flex`、`opacity:1`、`visibility:visible`、`zIndex:95`、`elementFromPoint(中心)` 返回它自己），连 transition 关掉直接落终态也一样，像素区仍是空白；而首屏就可见的 fixed 元素能正常截到。这是 headless 的重绘缺陷，不是产品问题——**验证「点击才出现」的层叠问题别依赖无头截图，用 `elementFromPoint` 判定谁在最上层**。
-- 内置浏览器面板若报 `NATIVE_BROWSER_VIEWPORT_UNAVAILABLE`（viewport 0×0、`visibilityState=hidden`），真实点击不可用，但 `evaluate_script` 和 `take_snapshot` 仍可用。
-- **飞牌的弧度高度跟着距离走**（`app.js` 的 `flyCard`：`lift = clamp(22 + dist*0.17, 26, 98)`）。写死 66px 的话近距离飞行像飘、远距离像贴地滑。旋转方向也按 `dx` 符号走，所以 swap 的两张牌自然反向。
-- **`.turn-chip` 的 `swap` 类只在真的换人时才挂**。每次 render 都重写 `className` 会把还没播完的动画掐断，用 `el.dataset.turn` 比对。
-- **`.hidden` 是 `display:none`**，退场动画必须先播完再挂上 → 用 `hideOverlay(el)`（`app.js`），别直接 `classList.add('hidden')`。
-
-发牌错峰在 `makeCard` 的 `idx * 62 + 'ms'`；AI 节奏仍在 `runAI()`（820ms / place 阶段 1050ms）；飞牌时长在 `FLIGHT_DUR`。
-
-所有动画仍受 `prefers-reduced-motion` 的全局降级规则约束（`style.css` 末尾），新增的伪元素动画也一并覆盖。
-
-**AI 节奏在 `app.js` 的 `runAI()` 里**：每步停 820ms，若已在 `place` 阶段停 1050ms。想调快慢只改这一处。
-
-飞牌时长在 `FLIGHT_DUR`：普通 700ms、swap 900ms、cabo 900ms。
-
-飞牌的关键帧是五段的：起点缩到 0.45 并旋转 -16°，迅速放大到 0.94 出现，飞行中途上抛到 1.22 倍并带光晕（`filter: drop-shadow`），接近终点回到 1.04，最后缩小淡出。落点会回调 `onLand`，触发弃牌堆的 `landPop` 冲击波或座位的 `receive` 光晕。
-
-所有动画都尊重 `prefers-reduced-motion`。
-
-### 5.6 音频层（audio.js）
-
-**没有使用任何音频素材文件**——所有声音都由 Web Audio 实时合成。理由：本机没有 ffmpeg／Python，无法转码或跑 AI 生成模型；而成品是「单个 exe 拷走就能玩」，几 MB 素材会把体积抬高一个量级。代价是音色偏合成器，不像真实采样。
-
-体积成本只有约 40 KB 代码。
-
-**结构**（`static/audio.js`，810 行，全文件包在一个 IIFE 里）：
-
-- **总线**：`sfxBus` / `musicBus` → `ducker` → `master` → `limiter`（DynamicsCompressor，阈值 -10 dB）→ destination。另有一条 `revIn → ConvolverNode → master` 的混响支路。
-- **混响**：没有 IR 文件，用「白噪声 × 幂衰减 + 单极低通 + 15 ms 预延迟」在运行时生成 2.1 秒的立体声冲激响应。
-- **音色基元**：`osc()`（振荡器 + 可选滤波 + 包络）、`noise()`（噪声 + 带通/高/低通）、`pluck()`（音乐盒/木琴：基音 + 微非谐泛音 + 敲击瞬态）、`bell()`（非谐泛音 2.76/5.4/8.93）、`bassNote()`、`flick()`（纸牌甩动 = 三段噪声瞬态）、`whoosh()`、`thud()`。
-- **29 个音效**：`ui select deselect deal settle shuffle flip draw discard place take land receive swap peek spy penalty error cabo start score combo comboBreak recap expand collapse tick win lose`。`play(name, arg)` 是唯一入口，内部 try/catch，音频出错不影响牌局。
-
-**按键反馈的接法**：`app.js` 底部一条委托监听 `document.addEventListener('click', e => { if (e.target.closest('button')) snd('ui') })`，动态生成的操作按钮和键盘 Enter 触发的 click 都能覆盖。
-
-**事件音效的关键约束**：AI 的动作是「先 `playFlights()` 播飞牌、再 `setView(v, {flown: true})`」。`playOne()` 里的 `flown` 用来判断**这条动作的运动音效是否已经响过**——飞过了就不重复发声，只补胶囊提示。玩家自己的动作走同步路径（没有飞牌），动作音由 `playOne` 发。`opts.skipCabo` 已改名为 `opts.flown`，同时管横幅和声音两件事。
-
-**配乐**：D 大调 **3/4 拍圆舞曲**，100 BPM，16 小节循环（两个 8 小节段：`D G Bm A D G A Dsus` / `Bm A G D Bm A G A`）。选 3/4 是为了避开 4/4 + backbeat 的赌场/酒吧感，这跟 README 里「CABO 是记忆桌游不是赌场」一致。旋律不是写死的：每小节按当前和弦从 4 组动机 × 6 种节奏型里摇，音高只取和弦内音（经过音用 `SCALE` 吸附到调内），句尾延长。听感是「同一首曲子一直在变奏」，而不是随机音符。
-
-三个模式由 `musicMode(view)` 在每次 `setView` 时决定：
-
-| 模式 | 触发 | 速度 | 配器 |
-|---|---|---|---|
-| `menu` | 首页 / 结算 / 结束 | 76 | 稀疏音乐盒 + 和弦织体 |
-| `table` | 正常对局 | 100 | 低音 + 三拍和弦 + 旋律 + 沙锤 |
-| `tension` | 有人喊过 CABO 或分数 ≥ 80 | 112 | 旋律降八度、去沙锤、加底鼓脉冲 |
-
-换模式时 `bpm` 每步朝目标挪 1.2%，是滑过去而不是跳过去。
-
-**音量设置存哪**：见 5.7。
-
-### 5.7 音量持久化（prefs.go）
-
-**踩坑：光靠 localStorage 不够。** WebView2 每次启动随机分配端口，浏览器把 `127.0.0.1:61862` 和 `127.0.0.1:52341` 当成两个不同来源，localStorage 因此每次启动都归零——用户静音过一次，下次打开又是满音量（或者反过来）。
-
-所以真正的持久值写在 `%LOCALAPPDATA%\Cabo\prefs.json`，走 `GET/POST /api/prefs`。前端仍留一份 localStorage 作为首屏的即时缓存，但**服务端返回后会覆盖它**（`prefsTouched` 标志防止用户刚拖完滑块就被远端旧值刷回去）。
-
-写文件前 `io.LimitReader(4096)` + 数值夹紧到 0–1，路径不接受外部输入。
-
-### 5.8 累积式反馈与回合回顾（app.js + stats.go）
-
-爆款靠「每一步都在累加」留住人，原来这局每个动作都只反馈一次、结算只列四行数字。补了三层：
-
-**连击（`judgeStreak` / `setStreak` / `combo-chip`）**
-- 判定口径：**只认玩家自己验证过的降分**。`place` 到明牌位且摸进的牌更小、`takeDiscard` 换出的牌全部严格更大 → +1；换了张更大的、或触发 `penalty`（记错）→ 归零；**安置到暗牌位算中性**（既不奖励也不惩罚试探，因为 CABO 的核心就是记忆，惩罚盲试会让玩法变味）。
-- 判定发生在 `act()` 里，用**动作前的 view** 比对（`before.pending` / `before.discardTop` / `before.players[0].hand[i].visible`），动作后 view 就被 `applyView` 换掉了。
-- 递进：`comboTier(n)` 分 cool/warm/hot/flow（2/3/5/7 档），只换颜色和描边，**不做辉光**（这是持续状态标识，不是大招演出，见 5.4 的语汇分工）。音效 `combo(t,n)` 沿 D 大调五声音阶逐级往上爬，第 4 段起加彩、第 7 段起加钟，峰值实测 0.065→0.085→0.110，跟档位一起涨。
-- 断了给 `comboBreak`（往下掉的小三度，很轻），只在原来 ≥3 时发声——两三连就断不值得打扰。
-- `renderMe()` 每次重建名条，所以「涨一级弹一下」用 `pendingComboFx` 标志传递，渲染时消费掉并补 `.pop` 类。
-
-**回合回顾（`buildRecap`）**
-- 原料是 `roundEvents`：`setView` 里把每次响应的 `v.events` 攒起来，`view.round` 一变就清空。服务端投递一次就清 `state.Events`，所以本轮历史**只有客户端有**，这是它唯一能成立的地方。
-- 卡片按优先级取前 4：生涯新低 > CABO 赌局结果 > 最狠一手（`take.value>=2`）> 谁用置换动了你 > 记错 > 零失误 > 中途洗牌 > 100 分重置。
-- **只用看得见的信息**：换了几张、谁对谁、进账多少。暗牌的面额一概不进回顾卡——回顾卡是从客户端自己的视图拼的，天然不可能越权，别改成服务端下发。
-- 版式：单列横条（面板正文只有 ~330px，两列会把中文折成两三行、像报错列表）。图标 22px 色块 + 结论加粗 + 注脚灰字，`flex-wrap` 兜底。
-- 揭示节奏：回顾卡先出（每张隔 150ms 配一声 `recap` 轻钟），再走分数行的 `tick`，最后才是 `score`/`win`/`lose`；没有回顾卡时退回原来的 480ms 节奏。
-
-**生涯记录（`stats.go`，`/api/stats`）**
-- 和音量同一个理由存 `%LOCALAPPDATA%\Cabo\stats.json`：localStorage 在 WebView2 里每次启动都归零。
-- 字段：`bestRound`（单轮最低点数）、`bestStreak`、`rounds`、`perfect`（零失误轮）、`cabos`/`cabosWon`。合并规则：计数累加、`bestRound` 取更小、`bestStreak` 取更大。
-- **「没记录」用 -1，不能用 0**：0 点是这一局能拿到的最好结果，拿它当空值会让第一次真 0 分和空档分不清。
-- 上报由 `reportStats()` 在结算面板渲染时触发，**`roundEvents` 为空就跳过**——刷新页面重进结算时事件是空的，不跳过会把计数翻倍。
-- 顶栏 `#careerChip` 显示这五个数，读不到就整块 `.hidden`，不影响牌局。
-
-### 5.9 参考视频搬来的六个动效
-
-用户给了一段交互设计参考视频（《APP INTERACTION DESIGN VOL.03》，6 个微交互），要求照它的动效改游戏。**结论先说：配色改动已全部回退，只留动效。**
-
-> ⚠️ 中途把整套令牌换成过另一套（纸面 `#EFEDE9` / 墨黑牌背 / 青柠 0 分牌 / 等宽微标签 / 黑底药丸），截图也拍了。用户看完明确说「先把颜色全部换回之前的颜色，只改变动画效果」。**别再往回改色**，要动色先问。回退的做法：`git checkout -- style.css` 后只把动效那一段以**纯新增**的方式插回去（`git diff --stat` 显示 style.css 只有 insertions、没有 deletions，就是这个意思），并确认 `--mono/--rule/--lime/--cobalt` 这些新令牌引用清零、没有悬空 `var()`。
-
-搬进来的六个（对应视频编号）：
-
-| 视频 | 落到游戏里 | 入口 |
-|---|---|---|
-| ⑥ 圆形扩散转场 | 从按钮位置铺开一个圆盖住屏幕，中间那一拍换画面，再原路收回 | `circleWipe(x,y,atCover)`，接在 `startGame` / `nextRound` / `restart` |
-| ① 完成反馈按钮 | 实心色块弹大 + 一圈向外扩散的光环 + 18 颗粒子迸开。**原本还有一把描出来的勾，用户明确要去掉**；去掉后必须把圆环和粒子加强，否则整个演出在奶油底上几乎看不见 | `doneBurst(el, tone, hold)`，接在 `callCabo` |
-| ② 一个动作三处联动 | 自己 place/take/discard 之后，进度条 + 估值 + 连击标识一起弹一下 | `syncFlash()`，在 `act()` 里延时 260ms |
-| ③ 叠卡展开 / 整齐叠回 | 点弃牌堆，整叠向左摊成一条胶片（6 张）；再点叠回 | `toggleDiscard()` + `.discard-holder.open`，`view.go` 的 `DiscardUnder` 放到 6 张 |
-| ④ 停稳后才画线 | 弃牌堆顶牌落定 440ms 后，才描一条 `--tone` 色下划线 | `.card.settled::before` + `drawLine` |
-| ⑤ 惯性 + 吸附回弹 | 音量滑块松手吸到 0/25/50/75/100，用阻尼振荡 `exp(-5.5t)·cos(8.5t)` 过头再弹回 | `audio.js` 的 slider `change` 处理 |
-
-几个实现上的坑，改之前先看：
-
-- **`element.animate().finished` 在页面不可见时永远不 resolve。** 窗口最小化或切后台时 WAAPI 时间线不推进，`await startGame()` 就挂死，等于「点开始游戏没反应」。`circleWipe` 因此用 `Promise.race` 兜了 1.5s 超时，并用 `swapped` 标志保证 `atCover` 只执行一次。**任何 await 动画都要这么兜**。
-- **转场期间不要用退场动画**。`startGame` 原来是 `hideOverlay(startOverlay)`，现在直接 `.add('hidden')`——屏幕已经被圆盘盖住了，再播 330ms 退场纯属浪费。
-- **`.burst` 必须是零尺寸的点**（`width:0;height:0`，圆环用 `left:-23px;top:-23px` 反推居中）。有尺寸的 `.burst` 配 `transform:translate(-50%,-50%)` 时，子元素按 0,0 定位，粒子会从圆环**左上角**飞出去。
-- **摊开弃牌堆只能横向**。先做的向上摊会压进对手面板（牌桌中间没那么多竖向空间）。横向时每张只露出左边一条，所以点数必须搬到左上角（`.open .discard-fan .rank`）才读得到。
-- **只翻 class，不重建 DOM**：`toggleDiscord` 直接 `classList.toggle('open')`。走 `renderMiddle()` 重建的话，展开/收拢的补间会直接消失。
-
-### 5.10 截图工装（`?dev=1` + `devshots.js`）
-
-动效没法靠读代码验收，所以留了一套推画面的工装：
-
-- `app.js` 末尾在 `location.search` 含 `dev=1` 时挂 `window.__cab`（读写 `view/streak/roundEvents/career`、`idle()` 判断 AI 循环是否停手）并按需加载 `devshots.js`。**exe 自己生成的 URL 不带这个参数，对玩家是死代码。**
-- `devshots.js` 提供场景：`start / table / combo / recap / discard / burst / place / cabo`。
-- 起服务：`server.New()` 之外再套一层，把 `/api/*` 交给游戏、其余走 `http.FileServer(http.Dir("../internal/server/static"))` —— **静态资源读磁盘，改 CSS/JS 不用重新编译重启**。
-- 出图：无头 Edge `--headless=new --virtual-time-budget=… --screenshot=…`，每次都要独立的 `--user-data-dir`。
-- **两个必须知道的限制**：① 同源 iframe 工装在无头 Edge 下不执行脚本（推画面的逻辑只能放在页面自己里）；② 页面不可见会节流 rAF 和 CSS 动画，带 `both` 填充的入场动画永远停在 0% 不可见、`countUp` 停在起始值 —— 所以**验版式要加 `--force-prefers-reduced-motion`（把动画压成终态），验动效不能加**。
-- 无头截图里 `setTimeout` 也走虚拟时间、跑得飞快：`doneBurst` 的 1s 自清理会把粒子收走，所以它带一个 `hold` 参数给工装用。
-- 结算面板有「同一轮只渲染一次」的守卫，工装重推画面前要把 `ov.dataset.round/over` 清空，否则第二次 render 直接 return。
-
----
-
-## 六、未完成 / 可以继续做的
-| 优先级 | 事项 | 说明 |
-|---|---|---|
-| 中 | **应用图标** | 目前是 Windows 默认 exe 图标。`windres` 在 `E:\MinGW\bin\windres`，做法：生成 `.ico` → 写 `cabo.rc`（`1 ICON "cabo.ico"`）→ `windres -O coff -i cabo.rc -o rsrc_windows_amd64.syso` → 放进 `cmd/cabo/` 后重新 build。图标建议用珊瑚底 + 白色菱形（和牌背同一套语言） |
-| 低 | 热座模式 | 现在只有「人 vs AI」。**做过一版（视角跟着行动者 + 设备交接屏），用户要求撤掉了**，别再直接重做，先问清楚不要它的原因 |
-| 低 | 联机对战 | 现在 `server.Server` 只维护一局全局游戏，多标签页会互相干扰。要做联机得改成房间模型 |
-| 低 | Burn 抢牌 | 线上版机制，需要并发仲裁，属于第二阶段 |
-| 低 | 神风特攻队 | QQKK 彩蛋，加在 `endRound()` 里即可 |
-| 低 | 窗口图标验证 | 图标已嵌入 exe（字节级验证过），`IconId: 1` 对应 go-winres 生成的资源 ID 1。但没能亲眼确认标题栏/任务栏的显示效果——见第七节「沙箱限制」 |
-
----
-
-## 七、环境与踩坑记录（能省很多时间）
-
-### 7.1 已踩过的坑
-
-**Python 发请求**：`urllib` 连续发约 160 个请求后会被本机重置连接（Windows 端口层问题，不是服务端 bug）。
-→ 用 `http.client.HTTPConnection` 复用长连接，不要用 urllib。
-
-**后台进程**：用 `cmd &` 起的进程会在 shell 退出时被回收。
-→ 用工具的 `run_in_background`。
-
-**桌面截图**：PowerShell 的 `Add-Type` 和 `Reflection.Assembly.Load` 都被安全策略拦截，无法截桌面。
-→ 想验证 WebView 渲染，用 `-debug -log` 看 `%LOCALAPPDATA%\Cabo\cabo.log` 里的自检输出。
-
-**无头浏览器截图**：Edge headless 会拍到动画中间态（元素透明、面板半透明）。
-→ 加 `--force-prefers-reduced-motion --virtual-time-budget=6000` 让动画瞬时完成。
-
-**CSS 类名冲突**：踩过两次——`.me`（玩家区 flex column）撞 `.score-row.me` 导致结算行竖排；`.primary`（弹窗按钮 width:100%）撞 `.btn.primary` 导致操作按钮被拉成通栏。
-→ 通用词类名一定要加作用域。
-
-**CSS 优先级**：`.btn:hover:not(:disabled)` 权重 0,3,0 高于 `.btn.primary` 的 0,2,0，hover 时把金色渐变整个替换成透明白，文字还是深棕 → 看不见。
-→ 现在改成 CSS 变量分层（基类只用 `var(--btn-bg)`，变体只覆盖变量），只有一条 hover 规则。
-
-**rAF 依赖**：数字滚动用 `requestAnimationFrame`，在 rAF 不推进的环境（后台标签页、无头）会永远停在初始值。
-→ 先把正确值写进 DOM，动画只作增强。
-
-**飞牌元素泄漏**：`anim.onfinish` 在部分环境不触发。
-→ 必须加 `setTimeout(cleanup, dur + 320)` 兜底。
-
-**⚠️ 生成图标资源只能用 `go-winres`，不能用 `windres` 也不能用 `rsrc`**：
-
-- MinGW 6.3 的 `windres -O coff` 会产生 Go 链接器不认的重定位类型，直接编译失败（`unknown relocation type 7`）。
-- `rsrc` 能编译通过，但**生成的 `.syso` 会让 `-H windowsgui` 版本在进入 `main()` 之前就崩溃**——双击闪退、无窗口、无日志、进程内存停在 14MB 左右。这个坑排查了很久：用 `os.WriteFile` 在 main 第一行打标记才确认它根本没进 main。
-- 正确做法：
-  ```bash
-  go install github.com/tc-hib/go-winres@latest
-  cd cmd/cabo
-  $(go env GOPATH)/bin/go-winres.exe simply --icon cabo.ico \
-      --product-name "CABO" --file-description "CABO 卡波" \
-      --product-version 1.0.0.0 --file-version 1.0.0.0
-  ```
-  会生成 `rsrc_windows_amd64.syso` 和 `rsrc_windows_386.syso`，**把 386 那个删掉**（只留 amd64）。
-- 验证方法：GUI 版启动后进程内存应该在 30MB 以上（WebView2 已加载）。如果停在 14MB 左右，就是资源文件的问题。
-
-**WebView2 的 JS 注入不可靠**：`w.Init()` 底层调 `AddScriptToExecuteOnDocumentCreated` 但**丢弃了返回值**，失败也不报错；`w.Dispatch + w.Eval` 同样没成功。
-→ 别指望用它做自检。要确认页面有没有加载，看 `-log` 的请求日志：出现 `GET /style.css`、`GET /app.js`、`GET /api/state` 就说明 HTML/CSS/JS 全部加载且 JS 执行了。
-
-**日志文件会被僵尸进程占用**：程序每次启动都用 `os.Create` 覆盖 `cabo.log`。如果上一次的 cabo.exe 没退干净，新进程写不了日志（不致命，但会看不到诊断信息）。
-→ 排查前先 `taskkill /F /IM cabo.exe`。
-
-**沙箱限制（仅影响本机调试，不影响成品）**：从 `E://Cabo` 目录启动 exe 时 `net.Listen` 会报 `winapi error #10106`（Winsock 提供者初始化失败），拷到 `C://Users//...//Temp` 下就正常。
-→ 调试时把 exe 拷到临时目录跑。用户正常双击运行不受影响。
-
-### 7.2 测试策略
-
-三层，`go test ./...` 全绿：
-
-1. **规则单元测试**（`internal/engine`）—— 17 条，覆盖 1 换多、翻错惩罚、CABO 计分、平局、牌堆摸空后洗弃牌堆、两堆都空才结算。
-2. **AI 对局守恒**（`internal/ai`）—— 4 个 AI 用 60 个种子互打，每步断言「牌堆 + 弃牌堆 + 所有手牌 + 待安置牌 = 54」。**这条断言抓出过两个真实 bug**：换出的牌没进弃牌堆。改动引擎后一定要跑。
-3. **HTTP 端到端**（`internal/server`）—— 通过真实接口打完整一局，验证无非法状态、无死循环、结束条件正确。另有 `stats_test.go` 盯住生涯记录的合并规则（0 点是有效记录不是空值、脏输入折回、连击为 0 不占「有记录」）和跨启动往返。
-
----
-
-## 八、分发时会被 SmartScreen 拦
-双击 exe 可能弹「Windows 已保护你的电脑 / 发布者：发布者未知」。**这不是病毒，是 exe 没有代码签名、也没有信誉积累**，Windows SmartScreen 对「未知发布者」的默认行为。
-
-已确认的事实（2026-10-30 查）：
-- 文件没有 `Zone.Identifier` 数据流（不是"来自网络"的锁定问题）
-- `Get-AuthenticodeSignature` 返回 `NotSigned`
-- Smart App Control 为 `Off`，不是它在拦
-- `HKCU\...\AppHost\EnableWebContentEvaluation` 未设置（默认开启「检查应用和文件」）
-
-处理办法，按侵入性排序：
-
-1. **单次放行**：弹窗里点「仍要运行」。
-2. **关掉这个用户的 SmartScreen 应用检查**（无管理员权限）：
-   `Set-ItemProperty 'HKCU://Software//Microsoft//Windows//CurrentVersion//AppHost' -Name EnableWebContentEvaluation -Value 0`
-   代价是下载来的未知程序也不再提示，安全等级下降。
-3. **Defender 排除项**：只对病毒扫描有效，**对 SmartScreen 无效**，别搞混。
-4. **根治**：买代码签名证书（OV/EV）。EV 证书能立刻建立信誉；OV 证书首次仍可能提示，要等信誉积累。自签名证书没用——不在信任链里，反而更麻烦。
-
-如果只是自己玩，方案 1 或 2 就够了。
-
-## 九、下一步怎么接
-
-如果用户说「继续」：
-
-1. 先 `go test ./...` 确认基线是绿的。
-2. 问清楚要做什么。剩下的方向：联机、Burn 抢牌、神风特攻队彩蛋。（图标、音效、难度已完成；热座做过又被撤掉了。）
-3. 改引擎的话，**先看 `internal/engine/rules.go` 的 `Apply`**，那是唯一的规则入口；改完必须跑 `internal/ai` 的守恒测试。
-4. 改界面的活基本都在 `internal/server/static/` 三个文件里，改完 `go build` 重新出 exe（静态资源是编译时嵌入的，不重新 build 看不到变化）。
-5. 视觉上保持浅色系和「珊瑚橘 + 白色卡片」这套语言，别再回到深色。
-
-### 布局适配
-
-窗口可以随意缩放，但布局有最低高度要求。现在的做法：
-
-- 卡牌尺寸用 `clamp()` 跟随视口高度：`--hand-w: clamp(58px, 11.2vh, 96px)`、`--seat-w: clamp(42px, 7.4vh, 62px)`、`--pile-w: clamp(52px, 7.8vh, 66px)`。手牌区、牌堆、弃牌堆都引用这三个变量，改一处全跟着变。
-- `@media (max-height: 620px)` 会进一步压缩内边距和卡牌尺寸。
-- 原生窗口设了最小尺寸 `w.SetSize(780, 560, webview2.HintMin)`——只设置下限，不会改变初始大小。
-- `.table` 留了 `overflow-y: auto` 兜底，极端情况下可以滚动到按钮。
-
-**曾经踩过的坑**：早期版本卡牌是固定 96px，窗口缩到 870×580 时底部的手牌和「看牌」按钮会被裁掉（`overflow: hidden`），游戏根本开不了。改样式后务必在 780×500 和 1280×860 两个尺寸都截图确认按钮可见。
-
-### 换图标
+必须使用 `go-winres`，不要使用 MinGW `windres` 或 `rsrc`：
 
 ```bash
+go install github.com/tc-hib/go-winres@latest
 cd cmd/cabo
-# 改 cabo.ico 后重新生成资源（必须用 go-winres，原因见第七节）
-$(go env GOPATH)/bin/go-winres.exe simply --icon cabo.ico \
-    --product-name "CABO" --file-description "CABO 卡波" \
-    --product-version 1.0.0.0 --file-version 1.0.0.0
+$(go env GOPATH)/bin/go-winres.exe simply --icon cabo.ico --product-name "CABO" --file-description "CABO 卡波" --product-version 1.0.0.0 --file-version 1.0.0.0
 rm -f rsrc_windows_386.syso
 cd ../..
-go build -ldflags="-s -w -H windowsgui" -o cabo.exe ./cmd/cabo
+go build -ldflags="-s -w -H windowsgui" -o artifacts/app/cabo.exe ./cmd/cabo
 ```
 
-图标是程序生成的（珊瑚渐变圆角方块 + 白色菱形，和牌背同一套语言），生成脚本没有留在仓库里，需要改的话照 `docs/icon-preview.png` 的效果重画即可。
+历史踩坑：
 
-如果用户说「还是不好看」：
-
-- 先问具体是哪个元素（颜色？布局？动效？）
-- 只调那一个，不要整体翻新——已经翻过两轮，每次都牵动大量 CSS
+- MinGW `windres` 生成的资源可能让 Go 链接器报 `unknown relocation type 7`；
+- `rsrc` 生成的资源可能让 GUI 版在进入 `main()` 前崩溃，进程内存停在约 14MB；
+- 正常启动 WebView2 后，进程内存通常在 30MB 以上，可作为粗略验证。
 
 ---
 
-## 十、仓库约定（2026-11 整理）
+## 3. 核心架构
 
-- **`cabo.exe` 不再纳入版本控制**。它每次构建都变、单个 7.6 MB，留在历史里只会让仓库膨胀。分发走 GitHub Releases：`git tag v1.0.0 && git push origin v1.0.0`，然后在 Releases 页面基于该 tag 上传本地构建的 `cabo.exe`。
-- **CI**：`.github/workflows/ci.yml` 在每次 push / PR 时跑 `go vet`、`go test`、`go build`，并把产物作为 Actions Artifact 上传（`cabo-windows-amd64`）。即使不发 Release，也能从 Actions 里取到可运行的 exe。
-- **`.gitattributes`**：`* text=auto eol=lf` + 二进制标记。之前 Windows 上每次提交都刷 `LF will be replaced by CRLF` 警告，加上之后不再出现。
-- **忽略项**：`.workbuddy-ai/`、`cabo.log`、`cabo_webview2_data/`、`cabo.exe`、`cabo-dev.exe`。日志与缓存每次启动都会重写。
-- **许可证**：MIT（`LICENSE`）。仓库是 public 的，没有许可证等于保留所有权利。
-- **README 截图**：`docs/screenshot-start.png` / `docs/screenshot-play.png`。改完界面要同步重截，否则门面与实物不符（之前用的是四轮前的 v4 截图）。
-- **提交信息**：`<type>(<scope>): <摘要>`，body 用中文分条说明改动原因。type 取 feat / fix / refactor / chore / docs。
+### 3.1 入口与运行链路
+
+`cmd/cabo/main.go` 负责：
+
+1. 解析参数；
+2. 在 `127.0.0.1` 上启动本地 HTTP 服务；
+3. 创建 `server.New()`；
+4. Windows 下尝试打开 WebView2，失败时退回系统浏览器；
+5. 捕获 panic 并写入日志、弹出错误提示。
+
+服务地址只监听回环地址，不直接对外网暴露。
+
+### 3.2 规则引擎是确定性的
+
+`internal/engine` 不 import 业务外部包，不碰网络、文件、时钟或全局随机源。
+
+核心入口：
+
+```go
+Apply(state State, player int, action Action) (State, error)
+```
+
+规则约束：
+
+- `Apply` 先克隆状态，失败不会污染原状态；
+- 随机数由 `NewGame` 注入的 `*rand.Rand` 提供；
+- 发生器存放在不导出的 `State.rng` 中，不进入 JSON；
+- `Clone` 是浅拷贝，随机流指针会继续沿用；
+- 牌堆摸空后的洗牌发生在 `Apply` 内部；
+- 同一种子 + 同一动作序列仍应得到同一牌序。
+
+不要为了“更纯”把洗牌挪到引擎外，也不要在引擎里读时钟、文件或全局随机源。
+
+### 3.3 隐藏信息必须裁剪
+
+引擎内部知道所有牌，但对外只能使用：
+
+```go
+view := engine.ViewFor(state, playerID)
+```
+
+禁止直接序列化完整 `State`，否则会泄露所有暗牌和牌堆顺序。
+
+`Slot.KnownBy []int` 记录哪些玩家知道这张牌：
+
+- 开局看牌后记录知识；
+- Peek/Spy 成功后补充知识；
+- 明牌对所有玩家可见；
+- Swap 时牌的位置和朝向一起移动，`KnownBy` 重新计算；
+- 暗牌被换走后，旧玩家对原位置的记忆立即失效。
+
+服务端固定以玩家 0 视角响应。
+
+### 3.4 事件驱动前端动画
+
+引擎在状态变化时产生结构化 `Event`，前端不解析中文日志。
+
+事件类型：
+
+- `roundStart`
+- `peek`
+- `draw`
+- `reshuffle`
+- `discard`
+- `place`
+- `take`
+- `penalty`
+- `spy`
+- `swap`
+- `cabo`
+- `score`
+- `reset`
+- `gameOver`
+
+服务端成功响应后清空 `state.Events`，避免重复播放。`reshuffle.player` 固定为 `-1`，`value` 是洗回的牌数。
+
+### 3.5 先播动画，再切状态
+
+AI 行动走：
+
+```js
+await playFlights(view.events);
+setView(newView, { flown: true });
+```
+
+这样飞牌先发生在旧画面上，状态随后更新。玩家自己的操作走同步路径，保持跟手。
+
+AI 普通回合思考约 820ms，已摸牌进入 `place` 阶段后约 1050ms。飞牌普通约 700ms，Swap/CABO 约 900ms。
+
+### 3.6 AI
+
+AI 是参数化启发式，不做搜索树、概率推演或心理战，也不偷看牌堆。
+
+三档主要区别：
+
+- 轻松：更保守，较少置换；
+- 标准：敢在信息不足时冒险，会吃低牌、干扰领先者；
+- 较真：更早喊 CABO，更积极换牌和针对领先者。
+
+AI 只读取 `KnownByPlayer(p)` 为真的暗牌信息。换多判定以最佳牌组是否实际找到为准，不能用“存在同点牌”代替完整校验。
+
+### 3.7 HTTP 服务
+
+路由：
+
+| 路径 | 作用 |
+|---|---|
+| `/api/new` | 开局 |
+| `/api/state` | 获取当前视角 |
+| `/api/action` | 玩家动作 |
+| `/api/ai` | 推进一个 AI 动作 |
+| `/api/next` | 下一轮 |
+| `/api/prefs` | 音量设置 |
+| `/api/stats` | 生涯统计 |
+
+服务端只维护一局全局游戏。AI 不是后台自动循环，而是由前端逐步调用 `/api/ai`。
+
+响应统一为：
+
+```json
+{ "ok": true, "ready": true, "view": {} }
+```
+
+规则错误通常返回 HTTP 200 + `ok:false` + 中文错误信息。`new/prefs/stats` 请求体限制为 4096 字节；`action` 目前没有同样的限长。
+
+---
+
+## 4. 当前游戏规则
+
+### 4.1 牌组
+
+牌没有花色，只有 `ID + Rank`：
+
+| 数字 | 张数 | 能力 |
+|---|---:|---|
+| 0 | 3 | 无 |
+| 1–6 | 各 4 | 无 |
+| 7–8 | 各 4 | 看自己一张 |
+| 9–10 | 各 4 | 看对手一张 |
+| 11–12 | 各 4 | 交换任意两张 |
+| 13 | 3 | 无 |
+
+共 54 张，总点数 351，平均 6.5。改牌组时应维持该分布，否则平衡性会变化。
+
+### 4.2 初始设置
+
+- 2–4 人；
+- 每人 4 张暗牌；
+- 开局自选看 2 张；
+- 看完盖回，位置不可调整；
+- 之后依靠记忆和技能获取信息。
+
+### 4.3 回合三选一
+
+#### 从牌堆摸牌
+
+摸到后可以：
+
+1. 直接弃掉；
+2. 换入自己一张牌，旧牌弃掉；
+3. 如果是能力牌，发动能力，能力牌随后弃掉。
+
+只有从牌堆摸到的牌能触发能力。
+
+#### 拿弃牌堆顶
+
+弃牌堆顶是明牌，可以：
+
+- 1 换 1；
+- 1 换 2；
+- 1 换 3。
+
+换出的牌必须彼此同点，不要求与拿进的牌同点。成功后，拿进的牌保持明牌。
+
+如果换出的牌实际点数不一致：
+
+- 收下弃牌堆顶；
+- 参与换出的牌全部亮明；
+- 涉及 3 张时，额外从牌堆罚抽 1 张；
+- 罚抽前如果牌堆为空，会先洗弃牌堆，不能因此免罚。
+
+#### 喊 CABO
+
+喊 CABO 后：
+
+- 喊者手牌锁定，不能被 Swap；
+- 其他每位玩家各再行动一次；
+- 此期间不能再次喊 CABO；
+- 队列走完后摊牌结算。
+
+### 4.4 结算
+
+| 情况 | 本轮得分 |
+|---|---:|
+| 喊者且手牌并列最低 | 0 |
+| 喊者但不是最低 | 手牌点数 +10 |
+| 其他玩家 | 手牌点数 |
+
+轮内平局时喊者得分最低，可视为喊者优先。
+
+累计分数超过 100 时，打满整轮后游戏结束，累计最低分获胜。最终平局取累计最低分中下标较小的玩家，没有额外的喊者优先。
+
+总分恰好 100 且该玩家尚未使用过重置时，代码会自动重置为 50，每场限一次，并产生独立 `reset` 事件。
+
+### 4.5 牌堆耗尽
+
+牌堆摸空时：
+
+- 把弃牌堆洗回牌堆继续；
+- 尽量在弃牌堆留一张明牌；
+- 弃牌堆只剩一张时，整叠洗走；
+- 牌堆和弃牌堆都空时才结算本轮。
+
+实际对局中两堆同时耗尽很少见，主要用于保险。
+
+### 4.6 固定规则决策
+
+| 规则点 | 当前实现 |
+|---|---|
+| 开局看牌 | 自选 2 张，位置不可变 |
+| 能力映射 | 7/8 看自己，9/10 看对手，11/12 交换 |
+| 弃牌堆拿牌 | 保持明牌 |
+| 1 换多判定 | 换出的牌彼此同点 |
+| 1 换多上限 | 3 张 |
+| 翻错惩罚 | 收下顶牌；涉及 3 张再罚抽 1 张 |
+| 弃牌堆能力 | 不触发 |
+| CABO 后行动 | 其他人各一次 |
+| CABO 后手牌 | 喊者锁定，不可被 Swap |
+| 轮内平局 | 喊者得分优先 |
+| 最终平局 | 最低分中下标较小者 |
+| 牌堆摸空 | 洗弃牌堆续上，尽量留一张明牌 |
+| 两堆都空 | 结束本轮 |
+| 100 分重置 | 恰好 100，自动重置为 50，每场一次 |
+| 超过 100 分 | 打满整轮再结束 |
+
+未实现：
+
+- Kamikaze / QQKK 彩蛋；
+- Burn 抢牌；
+- 热座模式；
+- 联机房间。
+
+---
+
+## 5. 规则调研与策略资料
+
+### 5.1 CABO 的核心
+
+CABO 是记忆 + 轻策略 + 心理博弈桌游。每人 4 张暗牌，开局只看 2 张，目标是把点数压低后喊 CABO。
+
+乐趣来自信息不断变化：牌会被换走、被对手看过、被置换，玩家必须维护自己的记忆模型。
+
+### 5.2 第一版与第二版差异
+
+| 规则点 | 第一版 | 第二版 / 当前实现 |
+|---|---|---|
+| 人数 | 2–5 | 2–4 |
+| 弃牌堆拿牌 | 之后可暗置 | 保持明牌 |
+| 翻错惩罚 | 无额外惩罚 | 收牌，3 张再罚抽 |
+| 漏喊 CABO | -5 | -10 |
+| 计分 | 最低者固定 0 | 只有喊者最低得 0 |
+| 一轮结束 | CABO | CABO 或两堆耗尽 |
+| 100 分重置 | 无限次 | 每场一次 |
+
+### 5.3 未实现变体
+
+#### Kamikaze / 神风特攻队
+
+喊 CABO 时四张牌正好为两张 12 + 两张 13：
+
+- 喊者本轮 0 分；
+- 其他玩家各 +50。
+
+当前未实现。
+
+#### Burn
+
+线上版在回合结束后加入短时反应窗口，可烧自己的牌或对手的牌，并伴随成功/失败奖惩。当前未实现；未来需要并发仲裁、幂等和超时机制。
+
+### 5.4 策略提示
+
+- 记牌用“位置 + 点数 + 相邻关系”；
+- 优先处理 12/13；
+- 弃牌堆顶是 0–3 且自己有已知高牌时，1 换多通常稳定获利；
+- Peek 优先看完全未知的牌；
+- Spy 优先看刚被置换或领先者；
+- 手牌总和较低且确定至少一家不比自己低时再喊 CABO；
+- 故意留低牌可以诱导对手冒险换多；
+- 对手弃出的牌会泄漏其手牌信息。
+
+---
+
+## 6. 当前前端设计
+
+### 6.1 当前视觉
+
+2026-11-23 的最新美术不是旧奶油色方案，而是：
+
+- 中性灰白背景；
+- 半透明水玻璃面板；
+- 高光顶边、亮内环、底部厚度和模糊；
+- `rotateX(24deg)` 的装饰性 3D 牌桌；
+- 卡牌本身不参与牌桌的 3D 变换；
+- 手牌透视扇形展开；
+- SVG 气雾角色；
+- 淡染卡面、左下技能色点、右上技能标签；
+- CABO 使用座位旁金色气球字。
+
+核心视觉令牌见 `internal/server/static/style.css` 的 `:root`。
+
+### 6.2 历史视觉方案
+
+早期方案使用奶油底 `#FBF6EC`、珊瑚橘 `#FF7A59`、白色卡片和左侧 6px 技能色条。该方案已被整体替换。
+
+保留历史记录是为了避免误把旧截图、旧 Trae 记忆或旧交接描述当成当前设计要求。后续视觉调整应基于当前灰白水玻璃语言，不要无确认地回退旧配色。
+
+### 6.3 界面语言
+
+- 品牌名使用英文 `CABO`；
+- 其余功能文案使用中文；
+- 页面 `<title>` 为 `CABO 卡波`；
+- 按钮“喊 CABO”保留英文品牌词。
+
+### 6.4 页面结构
+
+`index.html` 包含：
+
+- 顶栏：轮次、当前行动者、生涯、声音、重开；
+- AI 座位区；
+- 中央牌堆、待处理牌、弃牌堆；
+- 自己状态条和手牌；
+- 动态操作区；
+- 特效层；
+- 开场设置层；
+- 结算层。
+
+前端没有独立 FSM 库。服务端 `view.phase` 表示规则阶段，前端 `mode` 表示交互模式：
+
+- `idle`
+- `peek`
+- `claim`
+- `place`
+- `peekSelf`
+- `spy`
+- `swap`
+
+`busy`、`animating`、`aiRunning` 防止重入。
+
+### 6.5 动效语言
+
+统一使用 `:root` 中的缓动变量：
+
+- `--e-out`
+- `--e-soft`
+- `--e-spring`
+- `--e-swing`
+- `--e-in`
+
+卡牌类动画需要过冲回落，表现重量感。所有动画受 `prefers-reduced-motion` 控制。
+
+已落地的主要动效：
+
+- 发牌错峰落入；
+- 3D 翻牌；
+- 飞牌弧线；
+- 弃牌落堆；
+- 牌堆数量弹跳；
+- 洗牌回堆；
+- 技能脉冲；
+- Swap 对向飞牌；
+- CABO 完成粒子 + 气球字；
+- 圆形扩散转场；
+- 一个动作三处联动；
+- 弃牌堆横向摊开；
+- 音量滑块吸附回弹；
+- 结算回顾卡和分数滚动。
+
+### 6.6 动效实现约束
+
+- 同一元素不要同时挂两个会互相覆盖的 `animation`；
+- 选中环画在 `.card::after`，不能画在暗牌不存在的 `.front` 上；
+- 作者写过 `display` 的元素使用 `hidden` 时要补 `[hidden]{display:none}`；
+- 退场先播动画，再挂 `.hidden`，使用 `hideOverlay()`；
+- 飞牌元素用 `setTimeout(cleanup, dur+320)` 兜底，不能只依赖 `onfinish`；
+- 飞牌弧度按距离计算：`lift = clamp(22 + dist*0.17, 26, 98)`；
+- `.turn-chip.swap` 只在真的换人时添加，避免 render 重写 class 掐断动画；
+- `element.animate().finished` 在页面不可见时可能永不 resolve，所有等待动画的流程都要有超时兜底；
+- `circleWipe` 使用 1.5 秒超时和 `swapped` 标志，避免最小化后开始游戏卡死；
+- 音量弹层挂在 `document.body`，避免被顶栏层叠上下文或滚动面板裁切；
+- 动态数值必须先写入正确终值，动画只作为增强。
+
+### 6.7 响应式
+
+- 卡牌尺寸使用 `clamp()` 跟随视口高度；
+- 矮窗、宽屏、窄屏有专门规则；
+- 牌桌允许纵向滚动兜底；
+- 原生窗口最小尺寸为 780×560；
+- 改版式后应至少验证 780×560、780×500、1280×860。
+
+当前可访问性已有中文 label、语义按钮、装饰 SVG `aria-hidden`、音频弹层 ARIA 和 reduced-motion。动态卡牌仍是 `div + click`，键盘聚焦、弹层焦点陷阱和动态提示 live region 尚未完善。
+
+---
+
+## 7. 累积式反馈
+
+### 7.1 连击
+
+只奖励玩家自己验证过的降分：
+
+- `place` 到明牌位且新牌更小：+1；
+- `takeDiscard` 换出的牌全部严格更大：+1；
+- 罚牌：归零；
+- 换入更大：归零；
+- 安置到暗牌位：中性。
+
+连击在 2/3/5/7 时升级颜色和音高。判定必须使用动作前 view，动作后状态已经切换。
+
+### 7.2 回合回顾
+
+`roundEvents` 只在客户端保存。服务端事件投递一次后清空，因此本轮历史只存在于前端。
+
+每轮最多选 4 条：
+
+- 生涯新低；
+- CABO 赌赢/赌输；
+- 一手换多；
+- 谁用置换动了你；
+- 记错次数；
+- 零失误；
+- 中途洗牌；
+- 100 分重置。
+
+回顾只能使用玩家看得见的信息，不能把暗牌面额写进回顾卡。
+
+### 7.3 生涯统计
+
+字段：
+
+- `bestRound`：单轮最低点数；
+- `bestStreak`：最长连击；
+- `rounds`：完成轮数；
+- `perfect`：零失误轮数；
+- `cabos` / `cabosWon`：喊 CABO 次数与胜率。
+
+“没有记录”使用 `-1`，因为 0 点是有效的最好成绩。
+
+刷新后重新进入结算时，`roundEvents` 为空，必须跳过上报，否则会重复计数。顶栏当前只常驻显示最低分和最长连击，其余在 tooltip 中。
+
+---
+
+## 8. 音频
+
+所有音频由 Web Audio 实时合成，没有音频素材文件。这样保持单 exe、离线可用和体积可控。
+
+### 8.1 总线
+
+当前结构：
+
+- `sfxBus -> master`
+- `musicBus -> ducker -> master`
+- `master -> limiter -> destination`
+- `revIn -> ConvolverNode -> revOut -> master`
+
+混响冲激响应在运行时生成：白噪声、幂衰减、单极低通、15ms 预延迟，约 2.1 秒立体声。
+
+### 8.2 音效与配乐
+
+- 29 种音效；
+- D 大调、3/4 拍圆舞曲；
+- 16 小节循环；
+- 旋律按和弦与动机变奏，不是固定粘贴循环；
+- `menu`：76 BPM，稀疏音乐盒；
+- `table`：100 BPM，完整对局编制；
+- `tension`：112 BPM，有人喊 CABO 或分数紧张时；
+- 模式切换时 BPM 平滑滑动。
+
+噪声类音效需要 makeup gain，否则带通滤波后可能比振荡器类安静约 10dB。AI 已飞过的动作使用 `flown` 标记，避免运动音效重复。
+
+### 8.3 音量持久化
+
+WebView2 每次随机端口，浏览器眼里的 origin 每次不同，localStorage 不能可靠跨启动保存。
+
+真正持久值写入：
+
+- `%LOCALAPPDATA%\Cabo\prefs.json`
+- `%LOCALAPPDATA%\Cabo\stats.json`
+
+前端仍用 localStorage 做首屏即时缓存，服务端返回后覆盖。写入前限制请求体并夹紧数值。
+
+---
+
+## 9. 持久化与安全边界
+
+### 9.1 当前持久化
+
+- 对局状态不落盘，关闭即丢失；
+- 音量写 `prefs.json`；
+- 生涯统计写 `stats.json`；
+- 损坏文件回退默认值；
+- 当前文件写入不是原子替换。
+
+### 9.2 统计信任模型
+
+服务端完全信任客户端上报的统计增量，没有根据服务端对局历史重新校验，也没有幂等去重。当前单机场景可接受，联机或排行榜必须先 redesign。
+
+### 9.3 HTTP 边界
+
+- 只监听 `127.0.0.1`；
+- 单进程用全局互斥锁串行化；
+- 无鉴权；
+- 无 Origin/CSRF 检查；
+- 多数 API 未限制 HTTP 方法；
+- `action` 请求体未限长；
+- 多标签页会共享同一局状态。
+
+这是桌面单机工具，不是公开多用户服务。若要联机，必须增加房间、身份、并发仲裁和输入校验。
+
+---
+
+## 10. 初始开发决策
+
+以下 17 项来自立项时的规则规格化，当前大部分已落地：
+
+| # | 歧义点 | 当前选择 |
+|---:|---|---|
+| 1 | 开局看牌 | 自选 2 张 |
+| 2 | 是否调整顺序 | 不调整 |
+| 3 | 能力映射 | 7/8 自看，9/10 看对手，11/12 交换 |
+| 4 | 弃牌堆拿牌 | 保持明牌 |
+| 5 | 1 换多基准 | 换出牌彼此同点 |
+| 6 | 1 换多上限 | 3 张 |
+| 7 | 翻错惩罚 | 收牌；3 张再罚抽 |
+| 8 | 弃牌堆能力 | 不触发 |
+| 9 | CABO 后对手 | 各行动一次 |
+| 10 | CABO 后自己 | 锁定 |
+| 11 | 轮内平局 | 喊者优先 |
+| 12 | 牌堆摸空 | 洗回续上，尽量留明牌 |
+| 13 | 100 分重置 | 恰好 100，每场一次 |
+| 14 | 超过 100 | 打满整轮 |
+| 15 | 2 人特殊规则 | 暂不实现 |
+| 16 | Kamikaze | 默认不启用 |
+| 17 | Burn | 第二阶段 |
+
+### 10.1 信息可见性模型
+
+| 层级 | 内容 | 可见范围 |
+|---|---|---|
+| 公开 | 弃牌堆、牌堆数量、手牌数量、分数、当前回合 | 所有玩家 |
+| 私有 | 自己已知的牌、 pending 牌 | 仅自己 |
+| 隐藏 | 对手暗牌、牌堆顺序 | 仅引擎 |
+
+采用“半辅助记忆”：已知牌显示，但牌被换走后知识立即失效。不要改成永久记住所有见过的牌，否则会改变游戏性质。
+
+### 10.2 核心数据模型
+
+```go
+Card   { ID, Rank }
+Slot   { Card, FaceUp, KnownBy }
+State  { Players, Deck, Discard, Pending, Phase, Turn, Caller, CaboQueue, Events, rng }
+Action { Indices, Targets }
+Event  { Kind, Player, Card, Target, Target2, Value }
+```
+
+`Card.ID` 用于追踪牌去向和守恒测试。当前采用状态快照，没有完整事件溯源或回放系统。
+
+### 10.3 状态转移概览
+
+```text
+peek
+  -> 每人看完两张
+  -> turn
+
+turn
+  -> draw deck       -> place
+  -> take discard    -> turn
+  -> call CABO       -> CaboQueue
+
+place
+  -> discard pending -> turn
+  -> swap in one     -> turn
+  -> use power       -> turn
+
+CaboQueue
+  -> 其他玩家各行动一次
+  -> roundEnd / gameOver
+```
+
+### 10.4 后续扩展的技术难点
+
+- Burn：并发抢牌、幂等、超时、仲裁；
+- 联机：房间模型、身份 token、断线重连；
+- 回放：seed + 动作序列，或完整事件流；
+- 存档：状态快照与已知牌信息一起保存；
+- 计时器：必须正确停止，避免泄漏；
+- 随机性：继续使用注入随机源。
+
+---
+
+## 11. 测试
+
+### 11.1 当前测试
+
+- `internal/engine/rules_test.go`：17 项规则测试；
+- `internal/ai/ai_test.go`：60 个种子自动完整对局；
+- `internal/server/server_test.go`：HTTP 完整对局、静态资源、prefs、未开局拒绝；
+- `internal/server/stats_test.go`：统计合并、持久化、脏输入。
+
+AI 测试每一步断言：
+
+```text
+牌堆 + 弃牌堆 + 所有手牌 + pending = 54
+```
+
+这条断言曾抓出换出牌没有进入弃牌堆的真实 bug。
+
+### 11.2 已验证与未覆盖
+
+已验证：
+
+- 基本发牌、摸牌、换牌、技能；
+- 1 换多与翻错惩罚；
+- CABO 计分；
+- 牌堆耗尽洗牌；
+- 多局牌数守恒；
+- HTTP 完整对局；
+- prefs/stats 往返。
+
+尚未专门覆盖：
+
+- 100 分重置；
+- 最终平局；
+- CABO 后 Swap 锁；
+- 独立 Spy 成功路径；
+- HTTP 方法限制；
+- 超大 action 请求；
+- race detector；
+- 覆盖率门槛。
+
+### 11.3 规则改动后的最低验证
+
+1. `go test ./internal/engine`；
+2. `go test ./internal/ai`；
+3. `go test ./internal/server`；
+4. `go vet ./...`；
+5. 修改前端后重新 build；
+6. 验证 780×560 和 1280×860 布局。
+
+---
+
+## 12. CI、发布与仓库约定
+
+### 12.1 CI
+
+`.github/workflows/ci.yml` 在 Windows 上执行：
+
+1. `gofmt -l .` 检查；
+2. `go vet ./...`；
+3. `go test ./...`；
+4. `govulncheck`，只报告不阻断；
+5. GUI 构建；
+6. 上传 `cabo-windows-amd64` Artifact。
+
+Dependabot 每月更新 Go 模块和 GitHub Actions。
+
+### 12.2 发布
+
+- exe 不纳入 Git；
+- 分发走 GitHub Releases 或 CI Artifact；
+- 仓库为 public，使用 MIT；
+- README 截图应在改版后更新；
+- `.gitattributes` 统一 LF，并标记二进制资源。
+
+### 12.3 忽略规则
+
+当前忽略：
+
+- `.workbuddy-ai/`
+- `.trae/`
+- `cabo.log`
+- `cabo_webview2_data/`
+- `*.exe`
+
+因此 `artifacts/` 中的 exe、日志和 WebView 缓存不会进入 Git；分享 zip 当前仍是未跟踪文件。
+
+### 12.4 提交信息
+
+仓库约定：
+
+```text
+<type>(<scope>): <中文摘要>
+```
+
+type 使用：
+
+- `feat`
+- `fix`
+- `refactor`
+- `chore`
+- `docs`
+
+body 用中文分条说明改动原因。原 Trae 提交规则文件只是空模板，没有额外规则，其约定已合并到此处。
+
+---
+
+## 13. 高频踩坑
+
+### 13.1 引擎与 AI
+
+- 不要把完整 State 发给前端；
+- 不要在 `Apply` 中使用时钟、文件或全局随机源；
+- Clone 的 rng 是浅拷贝指针，不要意外替换成新随机流；
+- 洗牌必须发生在引擎内部，保证动作序列可重放；
+- 换多判定要找实际最佳牌组，不能只判断存在同点；
+- AI 不能读取未授权的暗牌；
+- 改引擎后必须跑 AI 守恒测试。
+
+### 13.2 前端与动效
+
+- 同一元素的两个 `animation` 会整体覆盖；
+- `.hidden` 是 `display:none`，退场动画要先播放；
+- `onfinish` 不一定触发，飞牌要定时清理；
+- 页面不可见时 WAAPI 和 rAF 可能停住，等待动画要超时；
+- 先写正确 DOM 值，再播放动画；
+- 弹层注意层叠上下文、overflow 和 z-index；
+- 通用 class 名如 `.me`、`.primary` 容易冲突，要加作用域；
+- hover 样式用 CSS 变量分层，避免覆盖按钮变体；
+- 改前端必须重新 build，go:embed 不会自动读磁盘。
+
+### 13.3 音频
+
+- 音频初始化失败不能影响牌局；
+- 噪声类音效注意 makeup gain；
+- AI 飞牌后的动作不要重复发运动音效；
+- 音量必须走服务端持久化，不能只靠 localStorage；
+- 不要加入音频素材文件，保持单 exe 离线可玩。
+
+### 13.4 WebView2 与截图
+
+- WebView2 JS 注入历史上不可靠，页面是否加载应看请求日志；
+- 无头 Edge 每次使用独立 `--user-data-dir`；
+- 验版式加 `--force-prefers-reduced-motion`；
+- 验动效不要加 reduced-motion；
+- 页面不可见时 CSS 动画和 rAF 会停在中间帧；
+- 无头截图可能看不到脚本执行后才显示的 fixed 元素，可用 `elementFromPoint` 判断层叠；
+- 从某些沙箱工作目录启动 exe 可能报 `winapi error #10106`，可复制到临时目录验证；
+- 关闭游戏后再复制日志，避免文件占用。
+
+### 13.5 环境
+
+- Python `urllib` 连续请求可能被重置，批量 HTTP 验证用长连接；
+- 后台进程使用工具的 `run_in_background`，不要依赖 `cmd &`；
+- Go 构建 exe 在 Git Bash 中注意 Windows 路径转换；
+- 改完 GUI 程序后确认进程达到 30MB 级，粗略判断 WebView2 是否加载。
+
+---
+
+## 14. 已知限制
+
+- 只维护一局游戏，多窗口会互相干扰；
+- 没有对局存档；
+- 只有人 vs AI；
+- AI 是启发式，不做概率搜索；
+- 只在 Windows 上验证；
+- 没有代码签名，首次下载可能触发 SmartScreen；
+- 动态卡牌键盘可访问性不完整；
+- 文档截图落后于当前美术；
+- 分享 zip 是前端快照，不是独立运行包。
+
+SmartScreen 不是病毒警告。处理方式：
+
+1. 单次点击“仍要运行”；
+2. 降低当前用户 SmartScreen 检查；
+3. 购买 OV/EV 代码签名证书。
+
+Defender 排除项对 SmartScreen 无效，自签名证书也不能建立公开信任。
+
+---
+
+## 15. 后续方向
+
+| 优先级 | 事项 | 说明 |
+|---|---|---|
+| 中 | Burn | 需要并发仲裁、幂等、超时 |
+| 中 | Kamikaze | 可在结算阶段增加彩蛋 |
+| 中 | 联机 | 必须重构成房间模型 |
+| 低 | 热座 | 做过又被撤掉，重做前先问清原因 |
+| 低 | 对局存档 | 保存 State 与玩家已知信息 |
+| 低 | 可访问性 | 键盘选牌、焦点陷阱、live region |
+| 低 | 测试补强 | 100 分重置、最终平局、Swap 锁、HTTP 输入边界 |
+| 低 | 文档截图 | 用当前水玻璃美术重截 |
+
+如果继续开发：
+
+1. 先跑 `go test ./...` 建立绿色基线；
+2. 明确只改目标项，不顺手改配色或 surrounding code；
+3. 改规则先看 `internal/engine/rules.go`；
+4. 改界面先看 `internal/server/static/`；
+5. 改完重新构建并验证布局；
+6. 保持当前浅色水玻璃视觉，除非用户明确要求换肤。
+
+---
+
+## 16. 历史 Trae 记忆摘要
+
+原 `.trae/PROJECT_MEMORY.md` 来自 `.workbuddy-ai/memory` 的 2026-10-29 至 11-02 每日记录浓缩。它保留了以下高价值约束，现已并入本文：
+
+- 引擎随机流、视角裁剪和事件机制；
+- AI 先飞牌再切状态；
+- 旧奶油色视觉及卡面色条实现；
+- 动效覆盖、hidden、飞牌清理和 WAAPI 超时；
+- Web Audio 零素材方案；
+- localStorage 因随机端口不可靠；
+- 统计空值使用 -1；
+- 截图、无头浏览器和 WebView 调试经验；
+- 热座曾实现又被撤销；
+- Burn、Kamikaze、联机为后续方向。
+
+其中视觉部分属于历史方案，当前实现以第 6 节为准。
+
+---
+
+## 17. 规则资料来源
+
+原规则调研整理于 2026-10-29，参考：
+
+- Cabo 官方规则页：<https://cabocards.com/how-to-play/>
+- Cabo 官网：<https://cabocards.com/>
+- 豆瓣游戏条目：<https://www.douban.com/game/36665750/>
+- 豆瓣规则整理：<https://www.douban.com/note/862503479/>
+- 什么值得买规则整理：<https://post.m.smzdm.com/zzz/p/a34qpwkn>
+- 百度相关规则整理：<https://mbd.baidu.com/newspage/data/dtlandingsuper?nid=1749618466625398667>
+
+CABO 不同版本存在规则冲突。本项目以第 4 节的当前实现为准，调研资料用于理解背景和后续变体，不覆盖代码事实。
