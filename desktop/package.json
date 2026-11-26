@@ -45,6 +45,12 @@
     "win": {
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
@@ -52,6 +58,15 @@
         }
       ],
       "icon": "../cmd/cabo/cabo.ico"
+    },
+    "nsis": {
+      "artifactName": "CABO-${version}-windows-x64-setup.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "CABO",
+      "deleteAppDataOnUninstall": false
     },
     "portable": {
       "artifactName": "cabo.exe"

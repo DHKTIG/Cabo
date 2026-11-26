@@ -16,7 +16,8 @@ CABO 是一个用 Go 编写规则引擎与本地服务、用 Electron 承载桌�
 - 三档启发式 AI；
 - 单局 HTTP 服务与内嵌前端；
 - Electron 桌面窗口、单实例锁与子进程回收；
-- Windows Portable EXE 打包；
+- Windows Portable EXE 与 NSIS 安装器打包；
+- Android arm64 WebView 安装包工程；
 - 透明水玻璃、3D 牌桌装饰、气雾角色视觉；
 - 发牌、翻牌、飞牌、洗牌、置换、CABO、结算等动效；
 - Web Audio 实时合成配乐与音效，无音频素材文件；
@@ -49,10 +50,14 @@ E:\Cabo\
 │   ├── tests/                        前端纯逻辑单测
 │   └── scripts/
 │       ├── dev.cjs                   构建 Go 服务并启动开发窗口
-│       ├── build.cjs                 构建 Go 服务并生成便携 EXE
+│       ├── build.cjs                 构建 Go 服务并生成便携 EXE 与 NSIS 安装器
 │       ├── lint.cjs                  从仓库根运行 ESLint
 │       ├── coverage.cjs              race 与覆盖率门禁
 │       └── smoke.cjs                 CDP 驱动真实 Electron 开局
+├── android/                          Android WebView + arm64 Go server
+│   ├── app/src/main/java/com/dhktig/cabo/MainActivity.java
+│   ├── app/src/main/jniLibs/         CI 生成，不入 Git
+│   └── app/src/main/res/
 ├── internal/
 │   ├── engine/                       纯规则引擎
 │   │   ├── card.go                   牌、点数、能力、牌组
@@ -169,12 +174,14 @@ CABO_EXE_PATH=../artifacts/app/cabo.exe npm run test:smoke
 `npm run build` 会：
 
 1. 把 Go 入口编译为 `desktop/.electron/cabo-server.exe`；
-2. 用 electron-builder 生成 `artifacts/electron/cabo.exe`；
-3. 复制为最终成品 `artifacts/app/cabo.exe`。
+2. 用 electron-builder 生成 `artifacts/electron/CABO-1.0.0-windows-x64-setup.exe` 与 `artifacts/electron/cabo.exe`；
+3. 把 Portable 复制为最终成品 `artifacts/app/cabo.exe`。
 
 Go 服务仍使用 `-ldflags="-s -w -H windowsgui"` 构建。前端通过 `go:embed` 嵌入 Go 服务，修改前端后必须重新执行完整构建。国内网络下载中断时，可同时设置 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 和 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/` 后重试；后者用于 electron-builder 的内置工具，不能用前者替代。
 
 `npm run coverage` 运行 race detector，要求 64 位 GCC/clang；`--no-race` 仅用于诊断覆盖率，不能替代门禁。本机已安装官方 w64devkit 2.11.0 到 `D:\tools\w64devkit\w64devkit`，可用 `CC="D:/tools/w64devkit/w64devkit/bin/gcc.exe" PATH="/d/tools/w64devkit/w64devkit/bin:$PATH" npm run coverage`。门禁为 engine/game/storage ≥90%、ai/server ≥85%、总覆盖率 ≥80%。
+
+Android APK 由独立 CI job 构建：先把 Go 服务交叉编译为 `android/arm64` PIE，放入 `android/app/src/main/jniLibs/arm64-v8a/libcabo_server.so`，再用 Gradle 8.11.1 执行 `:app:assembleDebug`。APK 使用 debug 签名，供侧载安装；Google Play 发布需改为固定 release keystore。
 
 ### 2.4 图标资源
 
@@ -215,6 +222,8 @@ npm run build
 `cmd/cabo/main.go` 负责参数解析、日志、监听回环地址、信号关闭和挂载 `server.New()`。`-server` 模式不会打开浏览器或窗口。`internal/server` 只处理 HTTP/鉴权/输入边界；对局状态、AI 推进、连击与结算由 `internal/game` 持有，prefs/stats 由 `internal/storage` 持久化。
 
 服务地址只监听 `127.0.0.1`，不直接对外网暴露。Electron 窗口启用 `contextIsolation`、`sandbox`，关闭 `nodeIntegration`，并拒绝外部导航和新窗口。
+
+Android 使用原生 WebView 承载同一前端，并启动随 APK 携带的 arm64 Go 服务；随机令牌通过子进程环境变量传递，WebView 只允许同回环 origin 导航。Activity 销毁时终止服务，Go 端通过 `PR_SET_PDEATHSIG` 防止父进程死亡后残留。
 
 ### 3.2 规则引擎是确定性的
 
@@ -868,18 +877,10 @@ AI 测试每一步断言：
 
 ### 12.1 CI
 
-`.github/workflows/ci.yml` 在 Windows 上执行：
+`.github/workflows/ci.yml` 分为两个并行 job：
 
-1. `gofmt -l .` 检查；
-2. `go vet ./...` 与 `go test ./...`；
-3. `govulncheck` 阻断；
-4. 安装 Node 24 与 `desktop/package-lock.json` 锁定的 npm 依赖；
-5. 前端 ESLint 与 Node 单测；
-6. race detector 与分包/总覆盖率门禁；
-7. `npm audit --audit-level=high` 阻断高危及以上 npm 漏洞；
-8. 构建 Electron Portable EXE；
-9. 分别运行开发态与 `CABO_EXE_PATH` 成品冒烟；
-10. 上传 `artifacts/app/cabo.exe` 为 `cabo-windows-amd64` Artifact。
+- Windows：gofmt、vet、test、govulncheck、前端 lint/单测、race/覆盖率、npm 高危审计、Electron 构建、开发态与 Portable 冒烟；上传 Portable EXE 和 NSIS 安装器。
+- Android：Go 质量检查、android/arm64 交叉编译、16K ELF 对齐检查、Gradle `assembleDebug`、APK 签名校验；上传 `cabo-1.0.0-android-arm64.apk`。
 
 Dependabot 每月更新 Go 模块、`/desktop` npm 依赖和 GitHub Actions。
 
@@ -991,6 +992,7 @@ body 用中文分条说明改动原因。原 Trae 提交规则文件只是空模
 - 只在 Windows 上验证；
 - Electron 成品包含 Chromium 运行时，体积和内存高于旧 WebView2 版；
 - 没有代码签名，首次下载可能触发 SmartScreen；
+- Android 仅支持 arm64-v8a，APK 使用 debug 签名，尚未在真机/模拟器上验证；
 - 动态卡牌键盘可访问性不完整；
 - 文档截图落后于当前美术；
 - 分享 zip 是前端快照，不是独立运行包。

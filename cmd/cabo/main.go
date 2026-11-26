@@ -138,6 +138,7 @@ func main() {
 	}()
 
 	if *serverMode {
+		bindToParent()
 		fmt.Printf("CABO_SERVER_URL=%s\n", url)
 	} else {
 		if *browserMode {

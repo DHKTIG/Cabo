@@ -11,7 +11,7 @@
 
 ## 直接玩
 
-从 [Releases](https://github.com/DHKTIG/Cabo/releases) 下载 `cabo.exe`，双击即可；也可以照下面的「自己编译」自己构建。
+Windows 安装器、Portable EXE 和 Android APK 由 GitHub Actions 构建，可在仓库的 [Actions Artifacts](https://github.com/DHKTIG/Cabo/actions) 下载；也可以照下面的「自己编译」自己构建。
 
 | 参数 | 作用 |
 |---|---|
@@ -37,7 +37,7 @@ npm run test:smoke
 CABO_EXE_PATH=../artifacts/app/cabo.exe npm run test:smoke
 ```
 
-脚本会先编译 Go 服务，再用 electron-builder 生成 Windows Portable EXE，并直接覆盖 `artifacts/app/cabo.exe`。若下载中断，可在 Git Bash 中同时设置 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 和 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/` 后重试；后者用于 electron-builder 的内置工具。
+脚本会先编译 Go 服务，再用 electron-builder 同时生成 Windows Portable EXE 与 x64 NSIS 安装器：Portable 覆盖 `artifacts/app/cabo.exe`，安装器输出为 `artifacts/electron/CABO-1.0.0-windows-x64-setup.exe`。若下载中断，可在 Git Bash 中同时设置 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 和 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/` 后重试；后者用于 electron-builder 的内置工具。
 
 - **Electron 成品包含 Chromium 运行时**，体积和内存高于旧 WebView2 版。
 - 前端已拆为 ES Module，仍通过 `go:embed` 嵌入 Go 服务，不需要单独的前端构建链。
@@ -45,6 +45,8 @@ CABO_EXE_PATH=../artifacts/app/cabo.exe npm run test:smoke
 - 修改前端后必须重新执行 `npm run build`，`go:embed` 不会自动读取磁盘变化。
 - 只想启动开发窗口：在 `desktop/` 执行 `npm run dev`。
 - 质量门禁：engine/game/storage ≥90%，ai/server ≥85%，总覆盖率 ≥80%；前端 lint 与单测必须通过。
+- Windows 同时产出 `CABO-1.0.0-windows-x64-setup.exe` 与 `artifacts/app/cabo.exe`。
+- Android 产物为 `cabo-1.0.0-android-arm64.apk`，由 CI 使用 debug 签名，供侧载安装；不用于 Google Play 发布。
 
 ---
 

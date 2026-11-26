@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CABO</string>
+    <string name="start_failed">CABO 启动失败</string>
+    <string name="server_exited">本地服务意外退出（%1$d）</string>
+    <string name="startup_timeout">本地服务启动超时，请重试</string>
+</resources>

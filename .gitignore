@@ -16,3 +16,10 @@ cabo_webview2_data/
 
 # 构建产物（发版请走 GitHub Releases，见 README）
 *.exe
+
+# Android 构建产物与本地 SDK 配置
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/app/src/main/jniLibs/
