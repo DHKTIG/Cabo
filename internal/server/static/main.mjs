@@ -18,7 +18,6 @@ import {
   startGame,
   applyView,
   setView,
-  toggleDiscard,
 } from './flow.mjs';
 
 configureRenderer({
@@ -56,7 +55,6 @@ $('levelPicker').addEventListener('click', (e) => {
 
 $('btnStart').addEventListener('click', startGame);
 $('btnRestart').addEventListener('click', restart);
-$('discardPile').addEventListener('click', toggleDiscard);
 
 window.addEventListener('pagehide', dispose);
 

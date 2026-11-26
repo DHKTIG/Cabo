@@ -292,14 +292,3 @@ function restartNow() {
   resetRoundState();
   sndMode('menu');
 }
-
-// 点开弃牌堆：整叠牌展开成能读的一列，再点叠回去。
-// 只翻 class，不重建 DOM —— 重建会让展开/收拢的补间直接消失。
-export function toggleDiscard() {
-  state.discardOpen = !state.discardOpen;
-  const holder = document.querySelector('.discard-holder');
-  const pile = $('discardPile');
-  if (holder) holder.classList.toggle('open', state.discardOpen);
-  if (pile) pile.classList.toggle('open', state.discardOpen);
-  snd(state.discardOpen ? 'expand' : 'collapse');
-}

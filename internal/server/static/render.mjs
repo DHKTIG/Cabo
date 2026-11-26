@@ -127,20 +127,7 @@ function renderMiddle() {
 
   const holder = document.querySelector('.discard-holder');
   if (holder) {
-    holder.classList.toggle('open', state.discardOpen);
     holder.innerHTML = '';
-    if (state.view.discardUnder && state.view.discardUnder.length) {
-      const fan = document.createElement('div');
-      fan.className = 'discard-fan';
-      state.view.discardUnder.forEach((c) => {
-        const f = document.createElement('div');
-        f.className = 'card small';
-        f.dataset.tone = tone(c);
-        f.innerHTML = cardFace(c);
-        fan.appendChild(f);
-      });
-      holder.appendChild(fan);
-    }
     if (state.view.discardTop) {
       const el = document.createElement('div');
       el.className = 'card';

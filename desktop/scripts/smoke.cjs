@@ -231,7 +231,7 @@ async function main() {
           const box = element.getBoundingClientRect();
           return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
         };
-        return {
+        const initial = {
           danger: pick(danger),
           primary: pick(primary),
           action: document.querySelector('#actions').innerText,
@@ -242,6 +242,8 @@ async function main() {
             primary: rect(primary),
           },
         };
+
+        return initial;
       })()`,
     });
     if (evaluation.exceptionDetails || !evaluation.result.value) {
@@ -257,10 +259,6 @@ async function main() {
         throw new Error(`${name} button is outside the default viewport: ${JSON.stringify(box)}`);
       }
     }
-
-    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
-
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 780,
       height: 560,
@@ -292,7 +290,50 @@ async function main() {
       throw new Error(`Compact layout lost action buttons: ${JSON.stringify(compact.result.value)}`);
     }
 
-    console.log(JSON.stringify({ ...result, compact: compact.result.value }, null, 2));
+    const discardEvaluation = await cdp.send('Runtime.evaluate', {
+      awaitPromise: true,
+      returnByValue: true,
+      expression: `(async () => {
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const button = text => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === text);
+        const until = async fn => {
+          for (let i = 0; i < 200; i++) {
+            const value = fn();
+            if (value) return value;
+            await sleep(100);
+          }
+          throw new Error('Timed out waiting for discard UI: ' + document.body.innerText.slice(0, 1200));
+        };
+        await until(() => button('摸牌堆'));
+        button('摸牌堆').click();
+        await until(() => button('弃掉'));
+        button('弃掉').click();
+        await until(() => document.querySelector('.discard-holder .card .front'));
+        const top = document.querySelector('.discard-holder .card .front');
+        const style = getComputedStyle(top);
+        return {
+          count: Number(document.querySelector('#discardCount').textContent),
+          fanCount: document.querySelectorAll('.discard-fan').length,
+          backgroundColor: style.backgroundColor,
+          backgroundImage: style.backgroundImage,
+          backdropFilter: style.backdropFilter,
+        };
+      })()`,
+    });
+    if (discardEvaluation.exceptionDetails || !discardEvaluation.result.value) {
+      throw new Error(JSON.stringify(discardEvaluation.exceptionDetails || discardEvaluation.result));
+    }
+    const discard = discardEvaluation.result.value;
+    if (discard.count < 1 || discard.fanCount !== 0) {
+      throw new Error(`Discard pile should show only its top card: ${JSON.stringify(discard)}`);
+    }
+    if (discard.backgroundColor !== 'rgb(255, 255, 255)' || discard.backdropFilter !== 'none') {
+      throw new Error(`Discard top card should be opaque white: ${JSON.stringify(discard)}`);
+    }
+
+    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
+    console.log(JSON.stringify({ ...result, compact: compact.result.value, discard }, null, 2));
     console.log(`Screenshot: ${screenshotPath}`);
     void cdp.send('Browser.close').catch(() => {});
   } finally {

@@ -529,6 +529,11 @@ body {
 }
 
 .discard-holder .card { --w: var(--pile-w); }
+.discard-holder .card .front {
+  background: #fff;
+  backdrop-filter: none;
+  box-shadow: inset 0 0 0 1px rgba(120, 140, 170, 0.12), 0 16px 30px -14px rgba(25, 35, 60, 0.55);
+}
 
 /* ---------- 自己 ---------- */
 
@@ -1053,54 +1058,6 @@ body {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
 }
-
-/* 点开弃牌堆：整叠牌向左摊成一条胶片，再点叠回去。
-   摊向上方会压到对手面板，横向留给牌桌中间的空位。 */
-.discard-holder .discard-fan .card {
-  transition: transform 0.42s var(--e-spring), opacity 0.3s var(--e-out), filter 0.3s;
-}
-.discard-holder.open { z-index: 12; }
-.discard-holder.open .discard-fan .card {
-  opacity: 1;
-  filter: none;
-}
-.discard-holder.open .discard-fan .card:nth-child(1) { transform: translate(-50%, -50%) translateX(-30px) rotate(-1.6deg); z-index: 6; }
-.discard-holder.open .discard-fan .card:nth-child(2) { transform: translate(-50%, -50%) translateX(-58px) rotate(1.2deg); z-index: 5; }
-.discard-holder.open .discard-fan .card:nth-child(3) { transform: translate(-50%, -50%) translateX(-86px) rotate(-1deg); z-index: 4; }
-.discard-holder.open .discard-fan .card:nth-child(4) { transform: translate(-50%, -50%) translateX(-114px) rotate(1.4deg); z-index: 3; }
-.discard-holder.open .discard-fan .card:nth-child(5) { transform: translate(-50%, -50%) translateX(-142px) rotate(-1.2deg); z-index: 2; }
-.discard-holder.open .discard-fan .card:nth-child(6) { transform: translate(-50%, -50%) translateX(-170px) rotate(0.8deg); z-index: 1; }
-
-/* 每张牌只露出左边一条，所以点数得搬到左上角才读得到 */
-.discard-holder.open .discard-fan .rank {
-  position: absolute;
-  left: 9px;
-  top: 5px;
-  font-size: 15px;
-  letter-spacing: -0.5px;
-  z-index: 2;
-}
-.discard-holder.open .discard-fan .tag { display: none; }
-
-#discardPile { cursor: pointer; }
-.pile-tag {
-  position: absolute;
-  left: 50%;
-  bottom: -30px;
-  transform: translateX(-50%);
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
-  color: #FFFFFF;
-  background: var(--ink);
-  padding: 3px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s var(--e-out);
-}
-#discardPile.open .pile-tag { opacity: 1; }
 
 /* ---------- 浮动特效 ---------- */
 
@@ -1846,24 +1803,6 @@ body {
 .deck-stack[data-tier="empty"] i:nth-child(2) { opacity: 0; }
 .deck-stack[data-tier="empty"] i:nth-child(3) { opacity: 0.5; }
 .deck-stack i { transition: opacity 0.5s var(--e-out), transform 0.5s var(--e-out); }
-
-/* 弃牌堆底下露出的最近几张：既是装饰也是记忆信息 */
-.discard-fan {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.discard-fan .card {
-  --w: var(--pile-w);
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  opacity: 0.5;
-  filter: saturate(0.75);
-}
-.discard-fan .card:nth-child(1) { transform: translate(-50%, -50%) rotate(-9deg) translate(-7px, 3px) scale(0.97); opacity: 0.42; }
-.discard-fan .card:nth-child(2) { transform: translate(-50%, -50%) rotate(7deg) translate(8px, 4px) scale(0.95); opacity: 0.3; }
-.discard-fan .card:nth-child(3) { transform: translate(-50%, -50%) rotate(-3deg) translate(0, 7px) scale(0.93); opacity: 0.2; }
 
 /* ---------- 音乐与音效控制 ---------- */
 

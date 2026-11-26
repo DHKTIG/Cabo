@@ -24,7 +24,6 @@ export const state = {
   roundEvents: [],
   career: null,
   pendingComboFx: 0,
-  discardOpen: false,
 };
 
 // audio.mjs 提供 window.snd；音频起不来时静默降级，不能影响牌局。

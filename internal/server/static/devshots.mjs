@@ -5,7 +5,7 @@
 
 import { state, sleep } from './core.mjs';
 import { render } from './render.mjs';
-import { act, startGame, toggleDiscard } from './flow.mjs';
+import { act, startGame } from './flow.mjs';
 import { doneBurst, showCaboBanner } from './effects.mjs';
 
 (async () => {
@@ -53,15 +53,7 @@ import { doneBurst, showCaboBanner } from './effects.mjs';
     const base = JSON.parse(JSON.stringify(v2));
     base.discardCount = 14;
     base.discardTop = { id: 71, label: '5', points: 5, power: '', powerZh: '' };
-    base.discardUnder = [9, 12, 2, 0, 13, 7].map((n, i) => ({
-      id: 80 + i,
-      label: String(n),
-      points: n,
-      power: n === 12 ? 'swap' : n === 9 ? 'spy' : n === 7 ? 'peek' : '',
-      powerZh: n === 12 ? '换' : n === 9 ? '窥' : n === 7 ? '透' : '',
-    }));
     window.__cab.apply({ view: base });
-    toggleDiscard();
     return;
   }
 
