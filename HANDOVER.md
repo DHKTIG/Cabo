@@ -8,20 +8,23 @@
 
 ## 1. 当前状态
 
-CABO 是一个用 Go 编写的单机版卡牌游戏：玩家对战 1–3 个电脑对手，双击 exe 后通过 WebView2 打开原生窗口，不需要浏览器，也不需要安装 Go 或 Node。
+CABO 是一个用 Go 编写规则引擎与本地服务、用 Electron 承载桌面窗口的单机版卡牌游戏：玩家对战 1–3 个电脑对手，双击 exe 后打开独立应用窗口，不需要浏览器，也不需要安装 Go 或 Node。
 
 当前已实现：
 
 - 完整对局流程与第二版规则口径；
 - 三档启发式 AI；
 - 单局 HTTP 服务与内嵌前端；
+- Electron 桌面窗口、单实例锁与子进程回收；
+- Windows Portable EXE 打包；
 - 透明水玻璃、3D 牌桌装饰、气雾角色视觉；
 - 发牌、翻牌、飞牌、洗牌、置换、CABO、结算等动效；
 - Web Audio 实时合成配乐与音效，无音频素材文件；
 - 音量设置、生涯统计、连击和回合回顾；
-- Windows 图标资源、CI、规则/AI/HTTP/持久化测试。
+- Windows 图标资源、CI、规则/AI/HTTP/持久化测试；
+- Electron CDP 冒烟测试，验证真实窗口中的开局与回合流程。
 
-2026-11-25 目录整理后执行过 `go test ./...`，全部通过。当前 Go 源码约 2889 行，前端约 4871 行，Go 侧有 24 个测试函数。
+2026-11-26 企业级重构后，Go 测试、vet、race、前端 lint/单测、覆盖率门禁、govulncheck 与 Electron 冒烟均通过。当前 Go 源码约 4701 行，前端约 4985 行，Go 侧有 70 个测试函数，前端有 4 个单测。
 
 ### 1.1 当前目录
 
@@ -35,10 +38,21 @@ E:\Cabo\
 ├── cmd/
 │   └── cabo/
 │       ├── main.go                   入口、参数、本地服务
-│       ├── window_windows.go         WebView2 窗口
-│       ├── window_other.go           非 Windows 占位实现
+│       ├── error_windows.go          Windows 错误提示
+│       ├── error_other.go            非 Windows 错误提示
 │       ├── cabo.ico                  图标源文件
 │       └── rsrc_windows_amd64.syso   已生成的 Windows 图标资源
+├── desktop/
+│   ├── main.cjs                      Electron 主进程
+│   ├── package.json                  开发依赖、质量命令与便携打包配置
+│   ├── package-lock.json             锁定 Electron 构建依赖
+│   ├── tests/                        前端纯逻辑单测
+│   └── scripts/
+│       ├── dev.cjs                   构建 Go 服务并启动开发窗口
+│       ├── build.cjs                 构建 Go 服务并生成便携 EXE
+│       ├── lint.cjs                  从仓库根运行 ESLint
+│       ├── coverage.cjs              race 与覆盖率门禁
+│       └── smoke.cjs                 CDP 驱动真实 Electron 开局
 ├── internal/
 │   ├── engine/                       纯规则引擎
 │   │   ├── card.go                   牌、点数、能力、牌组
@@ -49,29 +63,41 @@ E:\Cabo\
 │   │   └── rules_test.go
 │   ├── ai/
 │   │   ├── ai.go                     三档启发式 AI
-│   │   └── ai_test.go                多种子完整对局与牌数守恒
+│   │   └── ai_test.go                多种子完整对局、守恒与可复现性
+│   ├── game/                         对局编排、连击/失误与结算幂等
+│   │   ├── service.go
+│   │   ├── progress.go
+│   │   ├── service_test.go
+│   │   └── progress_test.go
+│   ├── storage/                      prefs/stats 版本迁移与原子持久化
+│   │   ├── store.go
+│   │   ├── prefs.go
+│   │   ├── stats.go
+│   │   └── storage_test.go
 │   └── server/
-│       ├── server.go                 HTTP API + go:embed
-│       ├── prefs.go                  音量持久化
-│       ├── stats.go                  生涯统计持久化
-│       ├── errors.go                 规则错误哨兵
+│       ├── server.go                 HTTP 路由、鉴权与静态资源
+│       ├── http.go                   方法、请求体、Origin/Host 与错误模型
+│       ├── prefs.go                  设置 API 适配器
+│       ├── stats.go                  权威统计只读 API
 │       ├── server_test.go
 │       ├── stats_test.go
+│       ├── http_test.go
 │       └── static/
 │           ├── index.html
 │           ├── style.css
-│           ├── app.js
-│           ├── audio.js
-│           └── devshots.js          仅 ?dev=1 加载
+│           ├── main.mjs               前端入口
+│           ├── core.mjs / dom.mjs / api.mjs
+│           ├── render.mjs / effects.mjs
+│           ├── flow.mjs / stats.mjs
+│           ├── audio.mjs
+│           └── devshots.mjs           仅 ?dev=1 动态加载
 ├── docs/
 │   ├── screenshot-start.png          旧版截图
 │   ├── screenshot-play.png           旧版截图
 │   └── icon-preview.png
 └── artifacts/
     ├── app/
-    │   ├── cabo.exe                  当前 GUI 成品
-    │   ├── cabo-dev.exe               当前调试成品
-    │   └── cabo_webview2_data/        WebView2 便携缓存
+    │   └── cabo.exe                   当前 Electron 便携成品
     ├── logs/
     │   └── cabo.log                   历史运行日志
     ├── share/
@@ -88,46 +114,67 @@ E:\Cabo\
 
 ### 2.1 直接运行
 
-- 成品：[`artifacts/app/cabo.exe`](artifacts/app/cabo.exe)
-- 调试版：[`artifacts/app/cabo-dev.exe`](artifacts/app/cabo-dev.exe)
+- 成品：[`artifacts/app/cabo.exe`](artifacts/app/cabo.exe)，Windows Portable EXE。
+- 双击后 Electron 自动选择回环端口，启动随包携带的 Go 服务，再创建 1280×860 的游戏窗口。
+- 开发 Electron 窗口时，在 `desktop/` 执行 `npm run dev`；设置 `CABO_DEVTOOLS=1` 可打开开发者工具。
+- 直接运行 Go 调试服务时，可使用 `-browser`、`-port N`、`-log` 等参数。
 
 | 参数 | 作用 |
 |---|---|
-| 无参数 | 启动 WebView2 原生窗口 |
-| `-browser` | 改用系统浏览器 |
+| 无参数（Electron 成品） | 启动独立桌面窗口 |
+| `-browser` | Go 服务使用系统浏览器打开 |
 | `-port N` | 固定本地端口；默认自动分配 |
-| `-debug` | 允许窗口内右键检查元素 |
+| `-server` | 仅启动 HTTP 服务，供 Electron 调用 |
 | `-log` | 额外记录每个 HTTP 请求 |
 
 基础文件日志始终开启；`-log` 只控制 HTTP 请求日志。日志按顺序尝试写入用户缓存目录、exe 同目录和系统临时目录，文件名固定为 `cabo.log`。
 
-WebView2 缓存固定放在 exe 同目录的 `cabo_webview2_data/`，所以 exe 和缓存应作为整体移动。
-
 ### 2.2 环境要求
 
-- Go 1.27，工具链 go1.27.3；
+开发与构建：
+
+- Go 1.27，工具链 go1.27.4；
+- Node.js 24、npm；
+- Windows 10/11。
+
+运行成品：
+
 - Windows 10/11；
-- 系统 WebView2 运行时；
-- 不需要 cgo、gcc、Node 或前端包管理器。
+- 不需要 Go、Node、系统浏览器或 WebView2；
+- Electron 运行时已经打进 Portable EXE。
 
 主要依赖：
 
-- `github.com/jchv/go-webview2`
+- `electron`
+- `electron-builder`
+- `eslint` / `@eslint/js` / `globals`
 - `golang.org/x/sys`
 
 ### 2.3 构建命令
 
-本地整理后的推荐输出位置：
+在项目根目录执行：
 
 ```bash
 go test ./...
-go build -ldflags="-s -w -H windowsgui" -o artifacts/app/cabo.exe ./cmd/cabo
-go build -o artifacts/app/cabo-dev.exe ./cmd/cabo
+cd desktop
+npm ci
+npm run lint
+npm test
+npm run coverage
+npm run build
+npm run test:smoke
+CABO_EXE_PATH=../artifacts/app/cabo.exe npm run test:smoke
 ```
 
-`-H windowsgui` 必须加，否则会附带黑色控制台窗口。前端通过 `go:embed` 嵌入二进制，修改前端后必须重新构建。
+`npm run build` 会：
 
-README 和 CI 仍保留根目录 `cabo.exe` 的输出约定；CI 只是构建并上传 Artifact，本地手动构建时可以把产物移动到 `artifacts/app/`。
+1. 把 Go 入口编译为 `desktop/.electron/cabo-server.exe`；
+2. 用 electron-builder 生成 `artifacts/electron/cabo.exe`；
+3. 复制为最终成品 `artifacts/app/cabo.exe`。
+
+Go 服务仍使用 `-ldflags="-s -w -H windowsgui"` 构建。前端通过 `go:embed` 嵌入 Go 服务，修改前端后必须重新执行完整构建。国内网络下载中断时，可同时设置 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 和 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/` 后重试；后者用于 electron-builder 的内置工具，不能用前者替代。
+
+`npm run coverage` 运行 race detector，要求 64 位 GCC/clang；`--no-race` 仅用于诊断覆盖率，不能替代门禁。本机已安装官方 w64devkit 2.11.0 到 `D:\tools\w64devkit\w64devkit`，可用 `CC="D:/tools/w64devkit/w64devkit/bin/gcc.exe" PATH="/d/tools/w64devkit/w64devkit/bin:$PATH" npm run coverage`。门禁为 engine/game/storage ≥90%、ai/server ≥85%、总覆盖率 ≥80%。
 
 ### 2.4 图标资源
 
@@ -141,14 +188,15 @@ cd cmd/cabo
 $(go env GOPATH)/bin/go-winres.exe simply --icon cabo.ico --product-name "CABO" --file-description "CABO 卡波" --product-version 1.0.0.0 --file-version 1.0.0.0
 rm -f rsrc_windows_386.syso
 cd ../..
-go build -ldflags="-s -w -H windowsgui" -o artifacts/app/cabo.exe ./cmd/cabo
+cd desktop
+npm run build
 ```
 
 历史踩坑：
 
 - MinGW `windres` 生成的资源可能让 Go 链接器报 `unknown relocation type 7`；
 - `rsrc` 生成的资源可能让 GUI 版在进入 `main()` 前崩溃，进程内存停在约 14MB；
-- 正常启动 WebView2 后，进程内存通常在 30MB 以上，可作为粗略验证。
+- 当前 Electron 成品启动后应同时看到 Electron 与 Go 服务进程，关闭窗口后 Go 服务应随之退出。
 
 ---
 
@@ -156,15 +204,17 @@ go build -ldflags="-s -w -H windowsgui" -o artifacts/app/cabo.exe ./cmd/cabo
 
 ### 3.1 入口与运行链路
 
-`cmd/cabo/main.go` 负责：
+`desktop/main.cjs` 负责：
 
-1. 解析参数；
-2. 在 `127.0.0.1` 上启动本地 HTTP 服务；
-3. 创建 `server.New()`；
-4. Windows 下尝试打开 WebView2，失败时退回系统浏览器；
-5. 捕获 panic 并写入日志、弹出错误提示。
+1. 申请单实例锁；
+2. 选择一个空闲回环端口并生成随机 API 令牌；
+3. 启动随包携带的 `cabo-server.exe -server -port N`，令牌只通过子进程环境变量传递；
+4. 轮询 `/healthz`，服务就绪后创建 Electron `BrowserWindow`，页面通过 URL fragment 取得令牌并立即清除；
+5. 窗口关闭或应用退出时请求 Go 子进程退出，等待其结束，5 秒后强制终止。
 
-服务地址只监听回环地址，不直接对外网暴露。
+`cmd/cabo/main.go` 负责参数解析、日志、监听回环地址、信号关闭和挂载 `server.New()`。`-server` 模式不会打开浏览器或窗口。`internal/server` 只处理 HTTP/鉴权/输入边界；对局状态、AI 推进、连击与结算由 `internal/game` 持有，prefs/stats 由 `internal/storage` 持久化。
+
+服务地址只监听 `127.0.0.1`，不直接对外网暴露。Electron 窗口启用 `contextIsolation`、`sandbox`，关闭 `nodeIntegration`，并拒绝外部导航和新窗口。
 
 ### 3.2 规则引擎是确定性的
 
@@ -228,7 +278,7 @@ view := engine.ViewFor(state, playerID)
 - `reset`
 - `gameOver`
 
-服务端成功响应后清空 `state.Events`，避免重复播放。`reshuffle.player` 固定为 `-1`，`value` 是洗回的牌数。
+mutation 响应携带事件后由 `internal/game` 清空 `state.Events`；`GET /api/state` 是纯快照，不消费事件。`reshuffle.player` 固定为 `-1`，`value` 是洗回的牌数。
 
 ### 3.5 先播动画，再切状态
 
@@ -259,25 +309,26 @@ AI 只读取 `KnownByPlayer(p)` 为真的暗牌信息。换多判定以最佳牌
 
 路由：
 
-| 路径 | 作用 |
-|---|---|
-| `/api/new` | 开局 |
-| `/api/state` | 获取当前视角 |
-| `/api/action` | 玩家动作 |
-| `/api/ai` | 推进一个 AI 动作 |
-| `/api/next` | 下一轮 |
-| `/api/prefs` | 音量设置 |
-| `/api/stats` | 生涯统计 |
+| 路径 | 方法 | 作用 |
+|---|---|---|
+| `/healthz` | GET | 无鉴权健康检查，供 Electron 轮询 |
+| `/api/new` | POST | 开局 |
+| `/api/state` | GET | 获取当前视角纯快照 |
+| `/api/action` | POST | 玩家动作 |
+| `/api/ai` | POST | 推进一个 AI 动作 |
+| `/api/next` | POST | 下一轮 |
+| `/api/prefs` | GET/POST | 读取/保存音量设置 |
+| `/api/stats` | GET | 读取服务端权威生涯统计 |
 
-服务端只维护一局全局游戏。AI 不是后台自动循环，而是由前端逐步调用 `/api/ai`。
+服务端只维护一局全局游戏。AI 不是后台自动循环，而是由前端逐步调用 `/api/ai`。统计不再接受客户端增量，轮次结算由 `internal/game` 计算并通过 `gameID:roundID` 台账幂等写入。
 
-响应统一为：
+成功响应示例：
 
 ```json
-{ "ok": true, "ready": true, "view": {} }
+{ "ok": true, "ready": true, "view": {}, "requestId": "..." }
 ```
 
-规则错误通常返回 HTTP 200 + `ok:false` + 中文错误信息。`new/prefs/stats` 请求体限制为 4096 字节；`action` 目前没有同样的限长。
+错误响应使用 `error:{code,message,retryable}` 和 `requestId`，并按语义返回 400/401/403/405/409/413/415/500。API 校验 Host、Origin 与 Bearer 令牌；普通 JSON 请求限制 4 KiB，`action` 限制 16 KiB，并拒绝未知字段与尾随 JSON。
 
 ---
 
@@ -500,7 +551,7 @@ CABO 是记忆 + 轻策略 + 心理博弈桌游。每人 4 张暗牌，开局只
 - `spy`
 - `swap`
 
-`busy`、`animating`、`aiRunning` 防止重入。
+`busy`、`animating`、`aiRunning` 防止重入。前端使用原生 ES Module：`core/dom/api` 提供底层能力，`render/effects` 负责视图与动画，`flow` 编排交互和 AI，`main` 只接线；`audio.mjs` 提供幂等 `dispose()`，`devshots.mjs` 仅在 `?dev=1` 动态加载。
 
 ### 6.5 动效语言
 
@@ -600,7 +651,7 @@ CABO 是记忆 + 轻策略 + 心理博弈桌游。每人 4 张暗牌，开局只
 
 “没有记录”使用 `-1`，因为 0 点是有效的最好成绩。
 
-刷新后重新进入结算时，`roundEvents` 为空，必须跳过上报，否则会重复计数。顶栏当前只常驻显示最低分和最长连击，其余在 tooltip 中。
+统计由 `internal/game` 在轮次结束时裁决并幂等写入，前端只读取权威结果；`roundEvents` 仅用于客户端回顾卡，刷新后为空不会影响统计。顶栏当前只常驻显示最低分和最长连击，其余在 tooltip 中。
 
 ---
 
@@ -634,14 +685,14 @@ CABO 是记忆 + 轻策略 + 心理博弈桌游。每人 4 张暗牌，开局只
 
 ### 8.3 音量持久化
 
-WebView2 每次随机端口，浏览器眼里的 origin 每次不同，localStorage 不能可靠跨启动保存。
+Electron 每次启动都会选择新的本地端口，浏览器眼里的 origin 也会变化，localStorage 不能可靠跨启动保存。
 
 真正持久值写入：
 
 - `%LOCALAPPDATA%\Cabo\prefs.json`
 - `%LOCALAPPDATA%\Cabo\stats.json`
 
-前端仍用 localStorage 做首屏即时缓存，服务端返回后覆盖。写入前限制请求体并夹紧数值。
+前端仍用 localStorage 做首屏即时缓存，服务端返回后覆盖。写入前限制请求体并夹紧数值；`internal/storage` 以 v2 文档持久化，兼容旧平铺 JSON，损坏文件自动隔离备份，写入采用同目录临时文件、`fsync`、原子替换。
 
 ---
 
@@ -650,26 +701,32 @@ WebView2 每次随机端口，浏览器眼里的 origin 每次不同，localStor
 ### 9.1 当前持久化
 
 - 对局状态不落盘，关闭即丢失；
-- 音量写 `prefs.json`；
-- 生涯统计写 `stats.json`；
-- 损坏文件回退默认值；
-- 当前文件写入不是原子替换。
+- 音量写 `prefs.json`，生涯统计写 `stats.json`；
+- 存储层使用进程内互斥锁、版本迁移和原子替换；
+- 损坏文件改名为 `*.corrupt-<timestamp>` 后回退默认值；
+- 统计文档同时保存结算台账，避免重复结算。
 
 ### 9.2 统计信任模型
 
-服务端完全信任客户端上报的统计增量，没有根据服务端对局历史重新校验，也没有幂等去重。当前单机场景可接受，联机或排行榜必须先 redesign。
+服务端根据对局状态计算本轮点数、最长连击、失误、CABO 胜负，并通过 `gameID:roundID` 结算台账幂等写入；`/api/stats` 只接受 GET，客户端不能注入增量。存储失败时结算保留在内存待重试，重开新局前会先尝试落盘。
 
 ### 9.3 HTTP 边界
 
-- 只监听 `127.0.0.1`；
-- 单进程用全局互斥锁串行化；
-- 无鉴权；
-- 无 Origin/CSRF 检查；
-- 多数 API 未限制 HTTP 方法；
-- `action` 请求体未限长；
-- 多标签页会共享同一局状态。
+- 只监听 `127.0.0.1`，校验 Host 与 Origin；
+- Electron 为每次启动生成 Bearer 令牌，Go 子进程通过环境变量接收；
+- API 严格限制方法、Content-Type、请求体大小和 JSON 字段；
+- 规则错误返回 400/409，鉴权与边界错误返回 401/403/405/413/415；
+- Electron 窗口启用隔离与沙箱，拒绝外部导航和新窗口；
+- Go 支持信号优雅关闭，Electron 等待子进程退出并设置 5 秒强制终止兜底；
+- 多标签页仍共享同一局状态，这是桌面单机工具的已知限制。
 
 这是桌面单机工具，不是公开多用户服务。若要联机，必须增加房间、身份、并发仲裁和输入校验。
+
+### 9.4 npm 构建依赖审计
+
+`electron-builder@26.18.0` 的上游依赖仍引用受 `GHSA-g3hv-75wg-m249` 影响的 `minimatch`，当前 `npm audit` 报告 6 个 moderate。问题位于开发期构建工具链，不会打包进成品运行时；CI 以 `npm audit --audit-level=high` 阻断高危及以上漏洞。
+
+不要直接运行 `npm audit fix --force`：它会降级到 `electron-builder@25.1.0`。升级 electron-builder 后应重新审计；在官方依赖提供修复前，构建只处理仓库内受信任文件。
 
 ---
 
@@ -756,10 +813,13 @@ CaboQueue
 
 ### 11.1 当前测试
 
-- `internal/engine/rules_test.go`：17 项规则测试；
-- `internal/ai/ai_test.go`：60 个种子自动完整对局；
-- `internal/server/server_test.go`：HTTP 完整对局、静态资源、prefs、未开局拒绝；
-- `internal/server/stats_test.go`：统计合并、持久化、脏输入。
+- `internal/engine/rules_test.go`：规则、视角裁剪、100 分重置、最终平局、Spy、CABO 锁牌与换牌知识失效；
+- `internal/ai/ai_test.go`：60 个种子完整对局、牌数守恒和同种子可复现性；
+- `internal/game`：动作编排、AI 推进、连击/失误、结算幂等与存储失败重试；
+- `internal/storage`：旧版迁移、损坏隔离、原子写、并发事务和文件错误路径；
+- `internal/server`：HTTP 完整对局、静态资源、鉴权、Host/Origin、方法、Content-Type、请求体与错误 envelope；
+- `desktop/tests`：回顾卡信息边界、连击档位、令牌与错误归一化单测；
+- `desktop/scripts/smoke.cjs`：CDP 驱动真实 Electron 完成开局、看牌、进入回合、默认/紧凑视口、按钮样式和进程/临时目录清理；`CABO_EXE_PATH` 直接验证 Portable EXE。
 
 AI 测试每一步断言：
 
@@ -778,28 +838,29 @@ AI 测试每一步断言：
 - CABO 计分；
 - 牌堆耗尽洗牌；
 - 多局牌数守恒；
-- HTTP 完整对局；
-- prefs/stats 往返。
+- HTTP 完整对局与服务端权威统计；
+- prefs/stats 往返、损坏恢复和并发写；
+- 100 分重置、最终平局、CABO 后 Swap 锁、独立 Spy；
+- HTTP 方法、鉴权、Origin/Host 与请求体边界；
+- 前端模块语法、lint、纯逻辑单测和真实 Electron 冒烟；
+- race 与覆盖率门禁（CI 使用 64 位编译器）。
 
 尚未专门覆盖：
 
-- 100 分重置；
-- 最终平局；
-- CABO 后 Swap 锁；
-- 独立 Spy 成功路径；
-- HTTP 方法限制；
-- 超大 action 请求；
-- race detector；
-- 覆盖率门槛。
+- 多标签页并发操作；
+- 真实断电、磁盘满与 Windows 文件锁故障注入；
+- 音频离线 PCM 指纹；
+- 代码签名与 SmartScreen 发布流程。
 
 ### 11.3 规则改动后的最低验证
 
-1. `go test ./internal/engine`；
-2. `go test ./internal/ai`；
-3. `go test ./internal/server`；
-4. `go vet ./...`；
-5. 修改前端后重新 build；
-6. 验证 780×560 和 1280×860 布局。
+1. `go test ./internal/engine ./internal/ai ./internal/game ./internal/storage ./internal/server`；
+2. `go vet ./...`；
+3. `cd desktop && npm run lint && npm test`；
+4. `cd desktop && npm run coverage`；
+5. 修改 Go 入口或前端后执行 `cd desktop && npm run build`；
+6. 执行 `npm run test:smoke`，并验证最终 Portable EXE；
+7. 验证 780×560 和 1280×860 布局。
 
 ---
 
@@ -810,13 +871,17 @@ AI 测试每一步断言：
 `.github/workflows/ci.yml` 在 Windows 上执行：
 
 1. `gofmt -l .` 检查；
-2. `go vet ./...`；
-3. `go test ./...`；
-4. `govulncheck`，只报告不阻断；
-5. GUI 构建；
-6. 上传 `cabo-windows-amd64` Artifact。
+2. `go vet ./...` 与 `go test ./...`；
+3. `govulncheck` 阻断；
+4. 安装 Node 24 与 `desktop/package-lock.json` 锁定的 npm 依赖；
+5. 前端 ESLint 与 Node 单测；
+6. race detector 与分包/总覆盖率门禁；
+7. `npm audit --audit-level=high` 阻断高危及以上 npm 漏洞；
+8. 构建 Electron Portable EXE；
+9. 分别运行开发态与 `CABO_EXE_PATH` 成品冒烟；
+10. 上传 `artifacts/app/cabo.exe` 为 `cabo-windows-amd64` Artifact。
 
-Dependabot 每月更新 Go 模块和 GitHub Actions。
+Dependabot 每月更新 Go 模块、`/desktop` npm 依赖和 GitHub Actions。
 
 ### 12.2 发布
 
@@ -833,10 +898,15 @@ Dependabot 每月更新 Go 模块和 GitHub Actions。
 - `.workbuddy-ai/`
 - `.trae/`
 - `cabo.log`
-- `cabo_webview2_data/`
+- `cabo_webview2_data/`（历史缓存）
+- `node_modules/`
+- `desktop/node_modules/`
+- `desktop/.electron/`
+- `desktop/dist/`
+- `artifacts/electron/`
 - `*.exe`
 
-因此 `artifacts/` 中的 exe、日志和 WebView 缓存不会进入 Git；分享 zip 当前仍是未跟踪文件。
+因此 `artifacts/` 中的 exe、日志、WebView 历史缓存和 Electron 构建中间目录不会进入 Git；分享 zip 当前仍是未跟踪文件。
 
 ### 12.4 提交信息
 
@@ -890,15 +960,16 @@ body 用中文分条说明改动原因。原 Trae 提交规则文件只是空模
 - 音量必须走服务端持久化，不能只靠 localStorage；
 - 不要加入音频素材文件，保持单 exe 离线可玩。
 
-### 13.4 WebView2 与截图
+### 13.4 Electron、浏览器与截图
 
-- WebView2 JS 注入历史上不可靠，页面是否加载应看请求日志；
+- Electron 的 CDP 冒烟测试使用 Node 24 内置 `WebSocket`，不需要额外测试依赖；
+- 在受限工作目录启动 Electron 可能静默退出，可把 `node_modules/electron/dist` 复制到系统临时目录后运行；
+- 开发态冒烟测试使用 `--disable-gpu`，避开工具环境的 GPU 启动问题；Portable EXE 验证使用默认启动参数；
 - 无头 Edge 每次使用独立 `--user-data-dir`；
 - 验版式加 `--force-prefers-reduced-motion`；
 - 验动效不要加 reduced-motion；
 - 页面不可见时 CSS 动画和 rAF 会停在中间帧；
 - 无头截图可能看不到脚本执行后才显示的 fixed 元素，可用 `elementFromPoint` 判断层叠；
-- 从某些沙箱工作目录启动 exe 可能报 `winapi error #10106`，可复制到临时目录验证；
 - 关闭游戏后再复制日志，避免文件占用。
 
 ### 13.5 环境
@@ -906,7 +977,8 @@ body 用中文分条说明改动原因。原 Trae 提交规则文件只是空模
 - Python `urllib` 连续请求可能被重置，批量 HTTP 验证用长连接；
 - 后台进程使用工具的 `run_in_background`，不要依赖 `cmd &`；
 - Go 构建 exe 在 Git Bash 中注意 Windows 路径转换；
-- 改完 GUI 程序后确认进程达到 30MB 级，粗略判断 WebView2 是否加载。
+- Electron 成品包含 Chromium 运行时，体积和内存明显高于旧 WebView2 版；
+- 修改 Go 入口或前端后，必须重新执行 `npm run build`，不能只跑 `go build`。
 
 ---
 
@@ -917,6 +989,7 @@ body 用中文分条说明改动原因。原 Trae 提交规则文件只是空模
 - 只有人 vs AI；
 - AI 是启发式，不做概率搜索；
 - 只在 Windows 上验证；
+- Electron 成品包含 Chromium 运行时，体积和内存高于旧 WebView2 版；
 - 没有代码签名，首次下载可能触发 SmartScreen；
 - 动态卡牌键盘可访问性不完整；
 - 文档截图落后于当前美术；

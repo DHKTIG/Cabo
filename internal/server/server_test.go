@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"cabo/internal/engine"
+	"cabo/internal/storage"
 )
 
 func call(t *testing.T, base, path string, body any) response {
@@ -40,11 +41,37 @@ func call(t *testing.T, base, path string, body any) response {
 	return r
 }
 
+func TestNewResponseHidesOpponentCards(t *testing.T) {
+	srv := httptest.NewServer(New())
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/new", "application/json", bytes.NewBufferString(`{"name":"测试员","ai":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var result response
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.OK || result.View == nil || len(result.View.Players) < 2 {
+		t.Fatalf("开局响应无效：%+v", result)
+	}
+	for i, slot := range result.View.Players[1].Hand {
+		if slot.Visible || slot.Card != nil {
+			t.Fatalf("AI 第 %d 张暗牌不应出现在响应中：%+v", i, slot)
+		}
+	}
+}
+
 func TestStaticAssetsEmbedded(t *testing.T) {
 	srv := httptest.NewServer(New())
 	defer srv.Close()
 
-	for _, p := range []string{"/", "/style.css", "/app.js", "/audio.js"} {
+	for _, p := range []string{
+		"/", "/style.css", "/main.mjs", "/core.mjs", "/dom.mjs", "/api.mjs",
+		"/stats.mjs", "/render.mjs", "/effects.mjs", "/flow.mjs", "/audio.mjs", "/devshots.mjs",
+	} {
 		resp, err := http.Get(srv.URL + p)
 		if err != nil {
 			t.Fatal(err)
@@ -70,8 +97,8 @@ func TestPrefsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	var empty struct {
-		OK    bool      `json:"ok"`
-		Prefs *prefsDoc `json:"prefs"`
+		OK    bool           `json:"ok"`
+		Prefs *storage.Prefs `json:"prefs"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&empty); err != nil {
 		t.Fatal(err)
@@ -81,7 +108,7 @@ func TestPrefsRoundTrip(t *testing.T) {
 		t.Fatalf("首次读取应返回 ok 且无设置，实际 %+v", empty)
 	}
 
-	body, _ := json.Marshal(prefsDoc{Music: 0.3, Sfx: 1.7, Muted: true})
+	body, _ := json.Marshal(storage.Prefs{Music: 0.3, Sfx: 1.7, Muted: true})
 	post, err := http.Post(srv.URL+"/api/prefs", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -94,20 +121,22 @@ func TestPrefsRoundTrip(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	var got struct {
-		OK    bool     `json:"ok"`
-		Prefs prefsDoc `json:"prefs"`
+		OK    bool          `json:"ok"`
+		Prefs storage.Prefs `json:"prefs"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
 	// Sfx 越界应被夹到 1
-	if !got.OK || got.Prefs != (prefsDoc{Music: 0.3, Sfx: 1, Muted: true}) {
+	if !got.OK || got.Prefs != (storage.Prefs{Music: 0.3, Sfx: 1, Muted: true}) {
 		t.Fatalf("设置未正确保存/夹紧，实际 %+v", got.Prefs)
 	}
 }
 
 // TestFullGameOverHTTP 通过真实 HTTP 接口打完整局，验证没有非法状态、没有死循环、牌数守恒。
 func TestFullGameOverHTTP(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	srv := httptest.NewServer(New())
 	defer srv.Close()
 
@@ -251,13 +280,42 @@ func TestFullGameOverHTTP(t *testing.T) {
 	if v.Winner != lowest {
 		t.Fatalf("获胜者应是分数最低的人")
 	}
+
+	resp, err := http.Get(srv.URL + "/api/stats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var career statsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&career); err != nil {
+		t.Fatal(err)
+	}
+	if !career.OK || career.Stats == nil || career.Stats.Rounds == 0 || career.Stats.BestRound < 0 {
+		t.Fatalf("完整对局应产生权威统计：%+v", career)
+	}
 }
 
 func TestActionBeforeStart(t *testing.T) {
 	srv := httptest.NewServer(New())
 	defer srv.Close()
-	r := call(t, srv.URL, "/api/action", map[string]any{"type": "drawDeck"})
-	if r.OK {
-		t.Fatal("没开局就行动应被拒绝")
+	req, err := http.NewRequest("POST", srv.URL+"/api/action", bytes.NewBufferString(`{"type":"drawDeck"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("没开局就行动应返回 409，实际 %d", resp.StatusCode)
+	}
+	var result response
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.OK || result.Ready || result.Error == nil || result.Error.Code != "conflict" {
+		t.Fatalf("未开局错误响应无效：%+v", result)
 	}
 }

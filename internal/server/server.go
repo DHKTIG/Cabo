@@ -2,40 +2,42 @@ package server
 
 import (
 	"embed"
-	"encoding/json"
-	"io"
+	"errors"
 	"io/fs"
-	"math/rand"
 	"net/http"
-	"sync"
+	"os"
+	"strings"
 	"time"
 
-	"cabo/internal/ai"
 	"cabo/internal/engine"
+	"cabo/internal/game"
+	"cabo/internal/storage"
 )
 
 //go:embed static/*
 var staticFS embed.FS
 
-// Server 单机版只需要维护一局游戏。
 type Server struct {
-	mu    sync.Mutex
-	state engine.State
-	rng   *rand.Rand
-	ready bool
-	level ai.Level
+	store *storage.Store
+	game  *game.Service
 	mux   *http.ServeMux
+	token string
 }
 
-// New 构造 HTTP 服务。
 func New() *Server {
-	s := &Server{}
+	store := storage.New("")
+	s := &Server{
+		store: store,
+		game:  game.New(store, time.Now().UnixNano()),
+		token: os.Getenv("CABO_API_TOKEN"),
+	}
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		panic(err)
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(sub)))
+	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/new", s.handleNew)
 	mux.HandleFunc("/api/state", s.handleState)
 	mux.HandleFunc("/api/action", s.handleAction)
@@ -48,175 +50,120 @@ func New() *Server {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	if !validHost(r.Host) {
+		writeError(w, http.StatusForbidden, "forbidden", "Host 不允许", false)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/healthz" {
+		if !validOrigin(r) {
+			writeError(w, http.StatusForbidden, "forbidden", "Origin 不允许", false)
+			return
+		}
+		if !s.authorized(r) {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "访问令牌无效", false)
+			return
+		}
+	}
 	s.mux.ServeHTTP(w, r)
 }
 
 type response struct {
-	OK    bool         `json:"ok"`
-	Ready bool         `json:"ready"`
-	Error string       `json:"error,omitempty"`
-	View  *engine.View `json:"view,omitempty"`
+	OK        bool         `json:"ok"`
+	Ready     bool         `json:"ready"`
+	Error     *apiError    `json:"error,omitempty"`
+	View      *engine.View `json:"view,omitempty"`
+	RequestID string       `json:"requestId"`
 }
 
-func clampLevel(v int) int {
-	if v < 0 {
-		return 0
+func writeJSON(w http.ResponseWriter, value any) {
+	writeJSONStatus(w, http.StatusOK, value)
+}
+
+func (s *Server) writeGameResult(w http.ResponseWriter, view engine.View, err error) {
+	result := response{
+		OK:        err == nil,
+		Ready:     !errors.Is(err, game.ErrNotReady),
+		RequestID: newRequestID(),
 	}
-	if v > 2 {
-		return 2
-	}
-	return v
-}
-
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func (s *Server) reply(w http.ResponseWriter, err error) {
-	res := response{OK: err == nil, Ready: s.ready}
 	if err != nil {
-		res.Error = err.Error()
-	} else {
-		v := engine.ViewFor(s.state, 0)
-		res.View = &v
-		// 事件只投递一次，避免客户端重复播放动画
-		s.state.Events = nil
+		status, code, message := parseActionError(err)
+		result.Error = &apiError{Code: code, Message: message, Retryable: status >= 500}
+		writeJSONStatus(w, status, result)
+		return
 	}
-	writeJSON(w, res)
+	result.View = &view
+	writeJSON(w, result)
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleNew(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var req struct {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	var request struct {
 		Name  string `json:"name"`
 		AI    int    `json:"ai"`
 		Level int    `json:"level"`
 	}
-	// 与 stats/prefs 一致限制请求体大小；解码失败时沿用零值默认（AI 会被钳到 1、名字用默认），不中断开局
-	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req)
-	if req.AI < 1 {
-		req.AI = 1
+	if !decodeJSON(w, r, &request, 4096) {
+		return
 	}
-	if req.AI > 3 {
-		req.AI = 3
-	}
-	s.level = ai.Level(clampLevel(req.Level))
-	name := req.Name
-	if name == "" {
-		name = "你"
-	}
-
-	names := []string{name}
-	flags := []bool{false}
-	letters := []string{"电脑 A", "电脑 B", "电脑 C"}
-	for i := 0; i < req.AI; i++ {
-		names = append(names, letters[i])
-		flags = append(flags, true)
-	}
-
-	s.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-	s.state = engine.NewGame(names, flags, s.rng)
-	s.ready = true
-
-	// AI 立即完成开局看牌
-	for i := 1; i < len(names); i++ {
-		if st, err := engine.Apply(s.state, i, ai.Decide(s.state, i, s.rng, s.level)); err == nil {
-			s.state = st
-		}
-	}
-	s.reply(w, nil)
+	view, err := s.game.NewGame(request.Name, request.AI, request.Level)
+	s.writeGameResult(w, view, err)
 }
 
 func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.ready {
-		writeJSON(w, response{OK: true, Ready: false})
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	s.reply(w, nil)
+	view, ready := s.game.Snapshot()
+	if !ready {
+		writeJSON(w, response{OK: true, Ready: false, RequestID: newRequestID()})
+		return
+	}
+	writeJSON(w, response{OK: true, Ready: true, View: &view, RequestID: newRequestID()})
 }
 
 func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.ready {
-		s.reply(w, errNotReady)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
-	var a engine.Action
-	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
-		s.reply(w, errBadRequest)
+	var action engine.Action
+	if !decodeJSON(w, r, &action, 16*1024) {
 		return
 	}
-	st, err := engine.Apply(s.state, 0, a)
-	if err != nil {
-		s.reply(w, err)
-		return
-	}
-	s.state = st
-	s.reply(w, nil)
+	view, err := s.game.Apply(action)
+	s.writeGameResult(w, view, err)
 }
 
 func (s *Server) handleAI(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.ready {
-		s.reply(w, errNotReady)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
-
-	// 开局阶段：找出还没看牌的 AI
-	if s.state.Phase == engine.PhasePeek {
-		for i := 1; i < len(s.state.Players); i++ {
-			if !s.state.Peeked[i] {
-				st, err := engine.Apply(s.state, i, ai.Decide(s.state, i, s.rng, s.level))
-				if err != nil {
-					s.reply(w, err)
-					return
-				}
-				s.state = st
-				s.reply(w, nil)
-				return
-			}
-		}
-		s.reply(w, nil)
+	var body struct{}
+	if r.ContentLength != 0 && !decodeJSON(w, r, &body, 4096) {
 		return
 	}
-
-	if s.state.Phase != engine.PhaseTurn && s.state.Phase != engine.PhasePlace {
-		s.reply(w, nil)
-		return
-	}
-	t := s.state.Turn
-	if t <= 0 || t >= len(s.state.Players) {
-		s.reply(w, nil)
-		return
-	}
-	st, err := engine.Apply(s.state, t, ai.Decide(s.state, t, s.rng, s.level))
-	if err != nil {
-		s.reply(w, err)
-		return
-	}
-	s.state = st
-	s.reply(w, nil)
+	view, err := s.game.AdvanceAI()
+	s.writeGameResult(w, view, err)
 }
 
 func (s *Server) handleNext(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.ready {
-		s.reply(w, errNotReady)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
-	s.state = engine.NextRound(s.state)
-	for i := 1; i < len(s.state.Players); i++ {
-		if st, err := engine.Apply(s.state, i, ai.Decide(s.state, i, s.rng, s.level)); err == nil {
-			s.state = st
-		}
+	var body struct{}
+	if r.ContentLength != 0 && !decodeJSON(w, r, &body, 4096) {
+		return
 	}
-	s.reply(w, nil)
+	view, err := s.game.NextRound()
+	s.writeGameResult(w, view, err)
 }
