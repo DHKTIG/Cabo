@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -93,8 +95,8 @@ func main() {
 		}
 	}()
 
-	browserMode := flag.Bool("browser", false, "用系统浏览器打开，不启动原生窗口")
-	debugMode := flag.Bool("debug", false, "开启调试（窗口内可右键检查元素）")
+	browserMode := flag.Bool("browser", false, "用系统浏览器打开")
+	serverMode := flag.Bool("server", false, "仅启动本地 HTTP 服务，供 Electron 调用")
 	port := flag.Int("port", 0, "本地服务端口，0 表示自动分配")
 	logTo := flag.Bool("log", false, "额外记录每个 HTTP 请求到 cabo.log")
 	flag.Parse()
@@ -109,6 +111,10 @@ func main() {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		logf("监听失败：%v", err)
+		if *serverMode {
+			fmt.Fprintln(os.Stderr, "监听失败:", err)
+			os.Exit(1)
+		}
 		reportError("CABO 启动失败", "无法监听本地端口：\n"+err.Error())
 		return
 	}
@@ -120,36 +126,48 @@ func main() {
 	handler := withLogging(http.Handler(server.New()))
 	logf("本地服务：%s", url)
 
+	srv := &http.Server{
+		Handler:      handler,
+		ReadTimeout:  20 * time.Second,
+		WriteTimeout: 20 * time.Second,
+	}
+	defer shutdown(srv)
+	serveErr := make(chan error, 1)
 	go func() {
-		srv := &http.Server{
-			Handler:      handler,
-			ReadTimeout:  20 * time.Second,
-			WriteTimeout: 20 * time.Second,
-		}
-		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			log.Println("服务异常：", err)
-		}
+		serveErr <- srv.Serve(ln)
 	}()
 
-	if !*browserMode {
-		if err := runWindow(url, *debugMode); err == nil {
-			logf("窗口正常退出")
-			return
-		} else {
-			logf("原生窗口不可用：%v", err)
-			where := "cabo.log"
-			if logFile != nil {
-				where = logFile.Name()
-			}
-			reportError("无法打开游戏窗口", err.Error()+"\n\n将改用浏览器打开。\n详细日志："+where)
+	if *serverMode {
+		fmt.Printf("CABO_SERVER_URL=%s\n", url)
+	} else {
+		if *browserMode {
+			logf("使用系统浏览器模式")
 		}
+		if err := openBrowser(url); err != nil {
+			reportError("CABO", "请手动在浏览器打开：\n"+url)
+			return
+		}
+		fmt.Println("游戏地址：", url)
+		fmt.Println("关闭此窗口即可退出")
 	}
 
-	if err := openBrowser(url); err != nil {
-		reportError("CABO", "请手动在浏览器打开：\n"+url)
-		return
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	select {
+	case <-ctx.Done():
+		logf("收到退出信号")
+	case err := <-serveErr:
+		if err != nil && err != http.ErrServerClosed {
+			log.Println("服务异常：", err)
+			reportError("CABO 服务异常", err.Error())
+		}
 	}
-	fmt.Println("游戏地址：", url)
-	fmt.Println("关闭此窗口即可退出")
-	select {}
+}
+
+func shutdown(srv *http.Server) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logf("关闭服务失败：%v", err)
+	}
 }

@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"bytes"
+	"encoding/json"
 	"math/rand"
 	"testing"
 
@@ -75,6 +77,52 @@ func TestAIGamesKeepCardCount(t *testing.T) {
 
 		if s.Phase != engine.PhaseGameOver {
 			t.Fatalf("seed %d 对局没有在 8000 步内结束，停在 %s", seed, s.Phase)
+		}
+	}
+}
+
+func TestSameSeedProducesSameGame(t *testing.T) {
+	run := func(seed int64) []byte {
+		rng := rand.New(rand.NewSource(seed))
+		state := engine.NewGame(
+			[]string{"A", "B", "C"},
+			[]bool{true, true, true},
+			rng,
+		)
+		for step := 0; step < 8000 && state.Phase != engine.PhaseGameOver; step++ {
+			if state.Phase == engine.PhaseRoundEnd {
+				state = engine.NextRound(state)
+				continue
+			}
+			player := state.Turn
+			if state.Phase == engine.PhasePeek {
+				for i := range state.Players {
+					if !state.Peeked[i] {
+						player = i
+						break
+					}
+				}
+			}
+			next, err := engine.Apply(state, player, Decide(state, player, rng, Hard))
+			if err != nil {
+				t.Fatalf("seed %d step %d: %v", seed, step, err)
+			}
+			state = next
+		}
+		if state.Phase != engine.PhaseGameOver {
+			t.Fatalf("seed %d 对局未结束", seed)
+		}
+		encoded, err := json.Marshal(state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	}
+
+	for _, seed := range []int64{0, 1, 42, 2026} {
+		first, second := run(seed), run(seed)
+		if !bytes.Equal(first, second) {
+			t.Fatalf("seed %d 的相同决策序列生成了不同状态", seed)
 		}
 	}
 }

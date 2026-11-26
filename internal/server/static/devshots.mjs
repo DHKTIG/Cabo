@@ -1,15 +1,19 @@
-/* devshots.js —— 只在 ?dev=1 下加载的截图场景（见 app.js 末尾的挂载点）。
+/* devshots.mjs —— 只在 ?dev=1 下动态加载的截图场景（见 main.mjs 末尾的挂载点）。
    用途：无头 Edge 用 ?dev=1&shot=recap 直接把界面推到某个状态，
    这样动效和版式改动能被截图验证，而不是靠读代码想象。
    这里只做「把画面推到某一刻」，不参与任何游戏规则。 */
 
+import { state, sleep } from './core.mjs';
+import { render } from './render.mjs';
+import { act, startGame, toggleDiscard } from './flow.mjs';
+import { doneBurst, showCaboBanner } from './effects.mjs';
+
 (async () => {
   const q = new URLSearchParams(location.search);
   const scene = q.get('shot') || 'table';
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // AI 循环会自己 applyView 覆盖外部推进去的画面，先等它停手
   const settle = async () => {
-    for (let i = 0; i < 90 && !__cab.idle(); i++) await sleep(150);
+    for (let i = 0; i < 90 && !window.__cab.idle(); i++) await sleep(150);
   };
 
   if (scene === 'start') return; // 首页：什么都别做，停在开场屏
@@ -20,11 +24,11 @@
   await sleep(1400);
   if (scene === 'table') return;
 
-  const v = __cab.get().view;
+  const v = window.__cab.get().view;
 
   if (scene === 'combo') {
     await settle();
-    __cab.apply({ streak: Number(q.get('n') || 5) });
+    window.__cab.apply({ streak: Number(q.get('n') || 5) });
     return;
   }
 
@@ -45,7 +49,7 @@
 
   if (scene === 'discard') {
     await settle();
-    const v2 = __cab.get().view;
+    const v2 = window.__cab.get().view;
     const base = JSON.parse(JSON.stringify(v2));
     base.discardCount = 14;
     base.discardTop = { id: 71, label: '5', points: 5, power: '', powerZh: '' };
@@ -56,7 +60,7 @@
       power: n === 12 ? 'swap' : n === 9 ? 'spy' : n === 7 ? 'peek' : '',
       powerZh: n === 12 ? '换' : n === 9 ? '窥' : n === 7 ? '透' : '',
     }));
-    __cab.apply({ view: base });
+    window.__cab.apply({ view: base });
     toggleDiscard();
     return;
   }
@@ -74,7 +78,7 @@
         isCaller: i === 1,
       })
     );
-    __cab.apply({
+    window.__cab.apply({
       view: base,
       roundBestStreak: 5,
       career: { bestRound: 14, bestStreak: 4, rounds: 9, perfect: 2, cabos: 3, cabosWon: 1 },
@@ -97,7 +101,7 @@
     // 摸一张牌进「换入手牌」状态，看选牌态与描边
     await act({ type: 'drawDeck' });
     await sleep(900);
-    mode = 'place';
+    state.mode = 'place';
     render();
     return;
   }

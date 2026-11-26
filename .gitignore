@@ -5,5 +5,14 @@
 cabo.log
 cabo_webview2_data/
 
+# Electron 开发与构建产物
+/node_modules/
+/desktop/node_modules/
+/desktop/.electron/
+/desktop/dist/
+/artifacts/electron/
+/coverage.out
+/storage-coverage.out
+
 # 构建产物（发版请走 GitHub Releases，见 README）
 *.exe

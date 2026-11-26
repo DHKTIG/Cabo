@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math/rand"
+	"reflect"
 	"testing"
 )
 
@@ -501,4 +502,232 @@ func TestCannotActOutOfTurn(t *testing.T) {
 	if _, err := Apply(s, 1, Action{Type: ActDrawDeck}); err != ErrNotYourTurn {
 		t.Fatalf("非当前玩家行动应报错，实际 %v", err)
 	}
+}
+
+func TestSpyPowerGrantsOnlyActorKnowledge(t *testing.T) {
+	s := testState(
+		[][]Card{{mk(3), mk(4), mk(5), mk(6)}, {mk(9), mk(10), mk(11), mk(12)}},
+		[]Card{mk(1), mk(9)},
+		nil,
+	)
+	s1, err := Apply(s, 0, Action{Type: ActDrawDeck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Apply(s1, 0, Action{Type: ActUsePower, Targets: []Target{{Player: 1, Slot: 2}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s2.Players[1].Hand[2].KnownByPlayer(0) {
+		t.Fatal("Spy 成功后行动者应知道目标牌")
+	}
+	if s2.Players[1].Hand[2].KnownByPlayer(1) {
+		t.Fatal("Spy 不应把对手原本不知道的牌标记为已知")
+	}
+	if got := s2.Events[len(s2.Events)-1]; got.Kind != EvSpy || got.Target == nil || *got.Target != (Target{Player: 1, Slot: 2}) {
+		t.Fatalf("应产生带目标的 EvSpy 事件，实际 %+v", got)
+	}
+}
+
+func TestCallerHandCannotBeSwapped(t *testing.T) {
+	s := testState(
+		[][]Card{{mk(1), mk(2), mk(3), mk(4)}, {mk(5), mk(6), mk(7), mk(8)}},
+		[]Card{mk(1), mk(12)},
+		nil,
+	)
+	s.Caller = 0
+	s.Turn = 1
+	s1, err := Apply(s, 1, Action{Type: ActDrawDeck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := s1.Clone()
+	_, err = Apply(s1, 1, Action{Type: ActUsePower, Targets: []Target{
+		{Player: 0, Slot: 0}, {Player: 1, Slot: 0},
+	}})
+	if err != ErrLockedHand {
+		t.Fatalf("CABO 喊者的手牌应锁定，实际 %v", err)
+	}
+	if !reflect.DeepEqual(s1, before) {
+		t.Fatal("失败的 Swap 不应修改原状态")
+	}
+}
+
+func TestExactlyHundredResetsOnlyOnce(t *testing.T) {
+	s := testState(
+		[][]Card{{mk(2), mk(2), mk(3), mk(3)}, {mk(1), mk(1), mk(1), mk(1)}},
+		nil,
+		nil,
+	)
+	s.Players[0].Score = 90
+	s.endRound()
+	if s.Players[0].Score != 50 || !s.Players[0].ResetUsed {
+		t.Fatalf("恰好 100 分应重置为 50 并标记已使用，实际 %+v", s.Players[0])
+	}
+	if !hasEventKind(s.Events, EvReset, 0) {
+		t.Fatal("100 分重置应产生 EvReset 事件")
+	}
+
+	s = testState(
+		[][]Card{{mk(13), mk(13), mk(12), mk(12)}, {mk(1), mk(1), mk(1), mk(1)}},
+		nil,
+		nil,
+	)
+	s.Players[0].Score = 50
+	s.Players[0].ResetUsed = true
+	s.endRound()
+	if s.Players[0].Score != 100 {
+		t.Fatalf("每场仅一次重置，第二次恰好 100 应保留，实际 %d", s.Players[0].Score)
+	}
+	if hasEventKind(s.Events, EvReset, 0) {
+		t.Fatal("已使用过重置时不应再次产生 EvReset")
+	}
+}
+
+func TestFinalTieBreaksByPlayerIndex(t *testing.T) {
+	s := testState(
+		[][]Card{{mk(1), mk(1), mk(1), mk(1)}, {mk(1), mk(1), mk(1), mk(1)}},
+		nil,
+		nil,
+	)
+	s.Players[0].Score = 100
+	s.Players[1].Score = 100
+	s.endRound()
+	if s.Phase != PhaseGameOver || s.Winner != 0 {
+		t.Fatalf("最终同分应选择下标较小的玩家，实际 phase=%s winner=%d", s.Phase, s.Winner)
+	}
+}
+
+func TestSwapMovesKnowledgeWithCards(t *testing.T) {
+	s := testState(
+		[][]Card{{mk(12), mk(4), mk(4), mk(5)}, {mk(1), mk(9), mk(9), mk(9)}},
+		[]Card{mk(1), mk(12)},
+		nil,
+	)
+	s.Players[0].Hand[0].KnownBy = []int{0}
+	s.Players[1].Hand[0].KnownBy = []int{1}
+	s1, err := Apply(s, 0, Action{Type: ActDrawDeck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Apply(s1, 0, Action{Type: ActUsePower, Targets: []Target{
+		{Player: 0, Slot: 0}, {Player: 1, Slot: 0},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s2.Players[0].Hand[0].KnownByPlayer(0) || !s2.Players[1].Hand[0].KnownByPlayer(0) {
+		t.Fatal("行动者应知道交换后的两张牌")
+	}
+	if s2.Players[0].Hand[0].KnownByPlayer(1) || s2.Players[1].Hand[0].KnownByPlayer(1) {
+		t.Fatal("对手对原位置的记忆应随牌移动而失效")
+	}
+}
+
+func TestPowerName(t *testing.T) {
+	cases := map[Power]string{
+		PowerNone: "",
+		PowerPeek: "透视",
+		PowerSpy:  "窥探",
+		PowerSwap: "置换",
+	}
+	for power, want := range cases {
+		if got := power.Name(); got != want {
+			t.Errorf("Power %d name = %q, want %q", power, got, want)
+		}
+	}
+}
+
+func TestNextRoundStartsFreshPeekPhase(t *testing.T) {
+	s := testState(
+		[][]Card{{mk(1), mk(1), mk(1), mk(1)}, {mk(2), mk(2), mk(2), mk(2)}},
+		nil,
+		nil,
+	)
+	s.Phase = PhaseRoundEnd
+	s.Round = 1
+	s.Players[0].Score = 12
+	s.Players[0].ResetUsed = true
+	next := NextRound(s)
+	if next.Round != 2 || next.Phase != PhasePeek || next.Caller != -1 || next.Winner != -1 {
+		t.Fatalf("unexpected next round: %+v", next)
+	}
+	if next.Players[0].Score != 12 || !next.Players[0].ResetUsed {
+		t.Fatal("next round should preserve career score and reset usage")
+	}
+	for i, player := range next.Players {
+		if len(player.Hand) != 4 || player.RoundPts != 0 || next.Peeked[i] {
+			t.Fatalf("player %d was not reset: %+v", i, player)
+		}
+	}
+	if totalCards(next) != 54 {
+		t.Fatalf("next round card count = %d", totalCards(next))
+	}
+}
+
+func TestViewForExposesOnlyPublicAndKnownCards(t *testing.T) {
+	pending := mk(9)
+	s := testState(
+		[][]Card{
+			{mk(1), mk(2), mk(3), mk(4)},
+			{mk(5), mk(6), mk(7), mk(8)},
+		},
+		[]Card{mk(10), mk(11)},
+		[]Card{mk(0), mk(1), mk(2), mk(3), mk(4), mk(5), mk(6), mk(7)},
+	)
+	s.Phase = PhasePlace
+	s.Caller = 0
+	s.Pending = &pending
+	s.Players[0].Hand[0].FaceUp = true
+	s.Players[0].Hand[1].KnownBy = []int{0}
+	s.Players[1].Hand[0].KnownBy = []int{0}
+
+	view := ViewFor(s, 0)
+	if view.DiscardTop == nil || view.DiscardTop.Points != 7 || len(view.DiscardUnder) != 6 {
+		t.Fatalf("unexpected discard view: top=%+v under=%d", view.DiscardTop, len(view.DiscardUnder))
+	}
+	if view.Pending == nil || view.Pending.Points != 9 {
+		t.Fatalf("pending card should be visible to the actor: %+v", view.Pending)
+	}
+	if !view.Can.DiscardPending || !view.Can.UsePower {
+		t.Fatalf("place capabilities = %+v", view.Can)
+	}
+	if !view.Players[0].IsTurn || !view.Players[0].IsCaller || !view.Players[0].Hand[0].Visible || !view.Players[0].Hand[1].Visible {
+		t.Fatalf("player view = %+v", view.Players[0])
+	}
+	if view.Players[0].Hand[2].Visible || !view.Players[1].Hand[0].Visible {
+		t.Fatal("known-by flags were not respected")
+	}
+	if ViewFor(s, 1).Pending != nil {
+		t.Fatal("another player must not see the pending card")
+	}
+
+	s.Phase = PhaseGameOver
+	if !ViewFor(s, 0).GameOver {
+		t.Fatal("gameover phase should be reflected in the view")
+	}
+}
+
+func TestApplyRejectsInvalidStateAndPlayer(t *testing.T) {
+	s := testState([][]Card{{mk(1)}}, nil, nil)
+	if _, err := Apply(s, 1, Action{Type: ActDrawDeck}); err != ErrBadPlayer {
+		t.Fatalf("bad player error = %v", err)
+	}
+	s.Phase = PhaseGameOver
+	if _, err := Apply(s, 0, Action{Type: ActDrawDeck}); err != ErrGameOver {
+		t.Fatalf("gameover error = %v", err)
+	}
+	s.Phase = PhaseTurn
+	if _, err := Apply(s, 0, Action{Type: ActPlace}); err != ErrNoPending {
+		t.Fatalf("missing pending error = %v", err)
+	}
+}
+
+func hasEventKind(events []Event, kind EventKind, player int) bool {
+	for _, event := range events {
+		if event.Kind == kind && event.Player == player {
+			return true
+		}
+	}
+	return false
 }

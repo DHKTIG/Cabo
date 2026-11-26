@@ -6,8 +6,9 @@
  * 公开 window.CaboAudio（构造器，可传入 OfflineAudioContext 做离线渲染自检）
  * 和 window.caboAudio（游戏用的单例）。
  */
-(function () {
-  const STORE_KEY = 'cabo.audio.v1';
+import { api } from './api.mjs';
+
+const STORE_KEY = 'cabo.audio.v1';
   const SILENT = 0.0001;
 
   const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -27,10 +28,32 @@
 
   const prefs = loadPrefs();
   const widgets = [];
+  const listeners = [];
+  const animationFrames = new Set();
   let engine = null;
+  let disposed = false;
+
+  function listen(target, type, handler, options) {
+    target.addEventListener(type, handler, options);
+    listeners.push({ target, type, handler, options });
+  }
+
+  function requestFrame(handler) {
+    const id = requestAnimationFrame((now) => {
+      animationFrames.delete(id);
+      if (!disposed) handler(now);
+    });
+    animationFrames.add(id);
+    return id;
+  }
+
+  function cancelFrame(id) {
+    cancelAnimationFrame(id);
+    animationFrames.delete(id);
+  }
 
   function loadPrefs() {
-    let s = null;
+    let s;
     try {
       s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
     } catch (e) {
@@ -44,11 +67,7 @@
   let saveTimer = 0;
 
   function postPrefs() {
-    fetch('/api/prefs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(prefs),
-    }).catch(() => {});
+    api('/api/prefs', prefs).catch(() => {});
   }
 
   function savePrefs() {
@@ -62,7 +81,7 @@
   }
 
   // 窗口关闭/切后台前把还没落地的这次改动补发出去，避免丢掉最后一次拖动
-  document.addEventListener('visibilitychange', () => {
+  listen(document, 'visibilitychange', () => {
     if (document.visibilityState === 'hidden' && saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = 0;
@@ -74,10 +93,9 @@
   // 用户已经动过控件就不再用远端覆盖，避免竞态把新值刷回去。
   let prefsTouched = false;
 
-  fetch('/api/prefs')
-    .then((r) => r.json())
+  api('/api/prefs')
     .then((r) => {
-      if (prefsTouched || !r || !r.prefs) return;
+      if (disposed || prefsTouched || !r || !r.prefs) return;
       prefs.music = clamp(r.prefs.music, 0, 1);
       prefs.sfx = clamp(r.prefs.sfx, 0, 1);
       prefs.muted = !!r.prefs.muted;
@@ -139,7 +157,7 @@
   const TEMPO = { menu: 76, table: 100, tension: 112 };
   const REV = { menu: 0.55, table: 0.34, tension: 0.2 };
 
-  class CaboAudio {
+export class CaboAudio {
     constructor(ctx) {
       this.ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
       this.offline = typeof this.ctx.startRendering === 'function';
@@ -641,6 +659,20 @@
       this.tempoTarget = TEMPO[mode] || TEMPO.table;
     }
 
+    dispose() {
+      if (this._disposed) return;
+      this._disposed = true;
+      this.ok = false;
+      if (this.timer) clearInterval(this.timer);
+      this.timer = 0;
+      for (const node of [this.master, this.limiter, this.sfxBus, this.musicBus, this.ducker, this.revIn, this.conv, this.revOut]) {
+        try { node && node.disconnect(); } catch (e) { /* 已断开的节点无需重复处理 */ }
+      }
+      if (this.ctx && this.ctx.state !== 'closed' && typeof this.ctx.close === 'function') {
+        Promise.resolve(this.ctx.close()).catch(() => {});
+      }
+    }
+
     // AudioContext 的时钟是唯一的真相；setInterval 只负责提前把音符排上去
     _pump() {
       if (this.offline || !this.ok) return;
@@ -815,8 +847,8 @@
       r.value = String(Math.round(prefs[key] * 100));
       const v = document.createElement('b');
       v.textContent = r.value + '%';
-      r.addEventListener('input', () => {
-        cancelAnimationFrame(raf);
+      listen(r,'input', () => {
+        cancelFrame(raf);
         setVolume(key, Number(r.value) / 100);
         v.textContent = r.value + '%';
       });
@@ -824,7 +856,7 @@
       // 松手吸到最近的 25% 刻度，并且像参考稿那样「过头一点再弹回来」：
       // 用阻尼振荡而不是直接赋值，硬吸附摸起来像卡住了。
       let raf = 0;
-      r.addEventListener('change', () => {
+      listen(r,'change', () => {
         const from = Number(r.value);
         const to = Math.round(from / 25) * 25;
         if (to === from) return;
@@ -836,15 +868,15 @@
           r.value = String(Math.round(clamp(eased, 0, 100)));
           v.textContent = r.value + '%';
           if (k < 1) {
-            raf = requestAnimationFrame(step);
+            raf = requestFrame(step);
           } else {
             r.value = String(to);
             v.textContent = to + '%';
             setVolume(key, to / 100);
           }
         };
-        cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(step);
+        cancelFrame(raf);
+        raf = requestFrame(step);
       });
 
       row.appendChild(t);
@@ -859,7 +891,7 @@
     mute.className = 'snd-mute';
     mute.type = 'button';
     mute.textContent = '静音';
-    mute.addEventListener('click', () => setMuted(!prefs.muted));
+    listen(mute,'click', () => setMuted(!prefs.muted));
     pop.appendChild(mute);
 
     // 弹层挂到 body 上，不留在 .snd 里：
@@ -867,7 +899,7 @@
     // 首页面板又是 overflow-y:auto 的滚动容器，会把弹层直接裁掉。
     document.body.appendChild(pop);
 
-    btn.addEventListener('click', () => {
+    listen(btn,'click', () => {
       const w = widgets.find((x) => x.btn === btn);
       const wasOpen = pop.classList.contains('open');
       closeAll();
@@ -921,7 +953,7 @@
   /* ---------------- 单例与解锁 ---------------- */
 
   function ensure() {
-    if (engine) return engine;
+    if (disposed || engine) return engine;
     const Ctor = window.AudioContext || window.webkitAudioContext;
     if (!Ctor) return null;
     try {
@@ -942,28 +974,28 @@
     window.removeEventListener('pointerdown', unlock, true);
     window.removeEventListener('keydown', unlock, true);
   }
-  window.addEventListener('pointerdown', unlock, true);
-  window.addEventListener('keydown', unlock, true);
+  listen(window,'pointerdown', unlock, true);
+  listen(window,'keydown', unlock, true);
 
-  document.addEventListener('click', (ev) => {
+  listen(document,'click', (ev) => {
     if (!ev.target.closest) return;
     // 弹层已经不在 .snd 里面了，要单独放行，否则拖滑块会把弹层点没
     if (ev.target.closest('.snd-btn') || ev.target.closest('.snd-pop')) return;
     closeAll();
   });
 
-  window.addEventListener('keydown', (ev) => {
+  listen(window,'keydown', (ev) => {
     if (ev.key === 'Escape') closeAll();
   });
 
   // 面板滚动或窗口缩放后按钮位置会变，直接收起比留着一个错位的弹层好
-  window.addEventListener('scroll', closeAll, true);
-  window.addEventListener('resize', closeAll);
+  listen(window,'scroll', closeAll, true);
+  listen(window,'resize', closeAll);
 
   // 控件不等手势，脚本一加载（index.html 里挂在 body 末尾，DOM 已就绪）就上屏
   mountControls();
 
-  // app.js 通过它发声；音频不可用时静默降级，绝不影响牌局
+  // main.mjs 通过它发声；音频不可用时静默降级，绝不影响牌局
   window.snd = function (name, arg) {
     const e = engine || ensure();
     if (e) e.play(name, arg);
@@ -971,4 +1003,28 @@
   window.sndMode = function (mode) {
     if (engine) engine.setMode(mode);
   };
-})();
+
+// pagehide 时由主入口调用：幂等释放音频资源、定时器、动画帧、监听与控件。
+export function dispose() {
+  if (disposed) return;
+  disposed = true;
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = 0;
+    postPrefs();
+  }
+  for (const id of animationFrames) cancelAnimationFrame(id);
+  animationFrames.clear();
+  for (const { target, type, handler, options } of listeners) {
+    target.removeEventListener(type, handler, options);
+  }
+  listeners.length = 0;
+  for (const w of widgets) {
+    w.root.remove();
+    w.pop.remove();
+  }
+  widgets.length = 0;
+  document.querySelectorAll('[data-snd-mount]').forEach((slot) => { delete slot.dataset.sndDone; });
+  if (engine) engine.dispose();
+  engine = null;
+}

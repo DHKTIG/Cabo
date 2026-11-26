@@ -1,6 +1,6 @@
 # CABO 卡波
 
-一个双击就能玩的单机版 CABO 卡牌游戏。Go 编写，**双击直接弹出一个原生窗口**，不需要浏览器，也不需要安装任何运行时。
+一个双击就能玩的单机版 CABO 卡牌游戏。Go 编写规则引擎与本地服务，**Electron 负责桌面窗口**，不需要安装 Go 或 Node。
 
 [![CI](https://github.com/DHKTIG/Cabo/actions/workflows/ci.yml/badge.svg)](https://github.com/DHKTIG/Cabo/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-E8A33D.svg)](LICENSE)
@@ -15,26 +15,36 @@
 
 | 参数 | 作用 |
 |---|---|
-| （无） | 原生窗口 |
-| `-browser` | 改用系统浏览器打开（窗口起不来时的退路） |
-| `-port 8848` | 固定端口，默认随机分配 |
-| `-debug` | 窗口内可右键「检查元素」，并输出渲染自检日志 |
-| `-log` | 请求日志写到 `%LOCALAPPDATA%\Cabo\cabo.log` |
+| `-port 8848` | 固定本地服务端口；仅在使用 Go 服务或浏览器模式时有意义 |
+| `-browser` | 改用系统浏览器打开（仅 Go 调试服务） |
+| `-server` | 只启动本地 HTTP 服务，供 Electron 调用 |
+| `-log` | 额外记录 HTTP 请求日志 |
 
-窗口基于系统自带的 WebView2 运行时（Windows 11 和绝大多数 Windows 10 都有）。万一没有，程序会弹提示框并自动退回浏览器模式。
+成品是 Windows Portable EXE，双击后由 Electron 创建独立窗口，并自动启动随包携带的 Go 本地服务。运行成品不需要系统预装浏览器或 WebView2；开发调试 Electron 时可设置 `CABO_DEVTOOLS=1` 打开开发者工具。
 
 ## 自己编译
 
-需要 Go 1.22 以上（用到了 `go:embed`）。
+需要 Go 1.27 与 Node.js 24，并在项目根目录执行：
 
 ```bash
-go build -ldflags="-s -w -H windowsgui" -o cabo.exe ./cmd/cabo
+cd desktop
+npm ci
+npm run lint
+npm test
+npm run coverage
+npm run build
+npm run test:smoke
+CABO_EXE_PATH=../artifacts/app/cabo.exe npm run test:smoke
 ```
 
-- **`-H windowsgui` 必须加**，否则会附带一个黑色控制台窗口。
-- 不需要 cgo，也不需要 gcc。
-- 产物是单个约 7 MB 的 exe，前端 HTML/CSS/JS 和图标都已经嵌进去了，拷到别的 Windows 机器上直接能跑。
-- 想调试就在构建时去掉 `-H windowsgui`，这样能看到控制台输出。
+脚本会先编译 Go 服务，再用 electron-builder 生成 Windows Portable EXE，并直接覆盖 `artifacts/app/cabo.exe`。若下载中断，可在 Git Bash 中同时设置 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 和 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/` 后重试；后者用于 electron-builder 的内置工具。
+
+- **Electron 成品包含 Chromium 运行时**，体积和内存高于旧 WebView2 版。
+- 前端已拆为 ES Module，仍通过 `go:embed` 嵌入 Go 服务，不需要单独的前端构建链。
+- `npm run coverage` 运行 race detector，并要求 64 位 GCC/clang；`--no-race` 仅用于诊断覆盖率，不能替代门禁。
+- 修改前端后必须重新执行 `npm run build`，`go:embed` 不会自动读取磁盘变化。
+- 只想启动开发窗口：在 `desktop/` 执行 `npm run dev`。
+- 质量门禁：engine/game/storage ≥90%，ai/server ≥85%，总覆盖率 ≥80%；前端 lint 与单测必须通过。
 
 ---
 
@@ -109,7 +119,7 @@ CABO 的核心信息只有两样：**这张牌值几分**，**它有没有技能
 单步反馈之外，还要让人看见自己在变好：
 
 - **连击**：连续把**自己已知的牌**换成更小的，就攒一段连击。判定只认证据——安置到没看过的牌位算中性（既不奖励也不惩罚试探），换了张更大的或记错牌立刻归零。连击标识分四档换色（2/3/5/7），音效沿五声音阶逐级往上爬。
-- **生涯记录**：单轮最低点数、最长连击、零失误轮数、喊 CABO 的胜率，**跨启动保留**（和音量设置同一个理由：WebView2 每次随机端口，localStorage 会归零，所以落在 `%LOCALAPPDATA%\Cabo\stats.json`）。顶栏一条常驻，破纪录时结算会给一张金卡。
+- **生涯记录**：单轮最低点数、最长连击、零失误轮数、喊 CABO 的胜率，**跨启动保留**（和音量设置同一个理由：Electron 每次随机本地端口，localStorage 会归零，所以落在 `%LOCALAPPDATA%\Cabo\stats.json`）。顶栏一条常驻，破纪录时结算会给一张金卡。
 - **回合回顾**：结算不再只是四行数字。每轮从本轮事件里挑最多 4 件值得说的事，做成回顾条——谁喊的 CABO 赌赢还是赌输、谁一手甩掉三张、谁用置换动了你的牌、你记错几次、中途洗了几次牌、有没有零失误。只用你本来就看得见的信息，暗牌面额不会漏进回顾。
 
 ### 对手行动的节奏
@@ -204,7 +214,7 @@ CABO 没有唯一权威规则，各版本互相矛盾。本项目固定了以下
 
 ```
 cabo/
-├── cmd/cabo/main.go            入口：起服务、开浏览器
+├── cmd/cabo/main.go            入口：起服务、开浏览器或供 Electron 调用
 ├── internal/
 │   ├── engine/                 规则引擎（纯函数，零 I/O）
 │   │   ├── card.go             牌、点数、技能判定、牌组构成
@@ -214,9 +224,12 @@ cabo/
 │   │   ├── view.go             视角裁剪，防止暗牌泄漏
 │   │   └── rules_test.go
 │   ├── ai/                     AI 对手
-│   ├── server/                 HTTP + 内嵌静态资源
-│   │   ├── server.go
-│   │   └── static/             前端（编译时嵌入）
+│   └── server/                 HTTP + 内嵌静态资源
+│       ├── server.go
+│       └── static/             前端（编译时嵌入）
+├── desktop/                    Electron 桌面壳与便携打包
+│   ├── main.cjs                启动本地服务并创建窗口
+│   └── scripts/                Go 服务构建、便携打包、冒烟测试
 └── docs/
 ```
 
@@ -244,7 +257,7 @@ go test ./...
 - 单机版只维护一局游戏，开两个窗口会互相干扰。
 - AI 是启发式的：会记自己看过的牌、会赌、会干扰领先者，但不算概率，也不做心理战。
 - 没有对局存档，关掉窗口这一局就没了（跨局保留的只有生涯记录和音量设置）。
-- 只在 Windows 上验证过（依赖系统自带的 WebView2 运行时）。
+- 只在 Windows 上验证过（Electron 成品面向 Windows Portable EXE）。
 
 ## 许可
 
