@@ -81,11 +81,14 @@ function createCdp(webSocketUrl) {
   const socket = new WebSocket(webSocketUrl);
   let nextId = 0;
   const pending = new Map();
+  const listeners = new Map();
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data);
-    if (!message.id || !pending.has(message.id)) {
+    if (!message.id) {
+      for (const listener of listeners.get(message.method) || []) listener(message.params);
       return;
     }
+    if (!pending.has(message.id)) return;
     const { resolve, reject, method } = pending.get(message.id);
     pending.delete(message.id);
     if (message.error) {
@@ -106,6 +109,11 @@ function createCdp(webSocketUrl) {
         pending.set(id, { resolve, reject, method });
         socket.send(JSON.stringify({ id, method, params }));
       });
+    },
+    on(method, listener) {
+      const entries = listeners.get(method) || [];
+      entries.push(listener);
+      listeners.set(method, entries);
     },
     close() {
       socket.close();
@@ -182,7 +190,12 @@ async function main() {
     const page = await waitForPage(port);
     cdp = createCdp(page.webSocketDebuggerUrl);
     await cdp.ready;
+    const runtimeEvents = [];
+    cdp.on('Runtime.exceptionThrown', (params) => runtimeEvents.push({ type: 'exception', ...params }));
+    cdp.on('Runtime.consoleAPICalled', (params) => runtimeEvents.push({ type: 'console', ...params }));
+    cdp.on('Log.entryAdded', (params) => runtimeEvents.push({ type: 'log', ...params }));
     await cdp.send('Runtime.enable');
+    await cdp.send('Log.enable');
     await waitForDocument(cdp);
     await cdp.send('Page.enable');
     await cdp.send('Page.bringToFront');
@@ -287,7 +300,7 @@ async function main() {
       })()`,
     });
     if (evaluation.exceptionDetails || !evaluation.result.value) {
-      throw new Error(JSON.stringify(evaluation.exceptionDetails || evaluation.result));
+      throw new Error(JSON.stringify({ details: evaluation.exceptionDetails || evaluation.result, runtimeEvents }));
     }
     const result = evaluation.result.value;
     if (result.layout.scrollWidth > result.layout.viewport.width) {
