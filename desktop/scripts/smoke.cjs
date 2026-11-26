@@ -198,9 +198,40 @@ async function main() {
             if (value) return value;
             await sleep(100);
           }
-          throw new Error('Timed out waiting for game UI: ' + document.body.innerText.slice(0, 1200));
+          const wipe = document.querySelector('.wipe');
+          const debug = {
+            text: document.body.innerText.slice(0, 1200),
+            href: location.href,
+            visibility: document.visibilityState,
+            ready: window.__CABO_READY__,
+            startClass: document.querySelector('#startOverlay')?.className,
+            appClass: document.querySelector('#app')?.className,
+            wipe: wipe ? {
+              className: wipe.className,
+              style: wipe.getAttribute('style'),
+              animations: wipe.getAnimations().map((animation) => ({ state: animation.playState, time: animation.currentTime })),
+            } : null,
+            requests: window.__caboRequests || [],
+            errors: window.__caboErrors || [],
+          };
+          throw new Error('Timed out waiting for game UI: ' + JSON.stringify(debug));
         };
         await until(() => window.__CABO_READY__ === true && button('开始游戏'));
+        window.__caboRequests = [];
+        window.__caboErrors = [];
+        window.addEventListener('error', (event) => window.__caboErrors.push(event.message));
+        window.addEventListener('unhandledrejection', (event) => window.__caboErrors.push(String(event.reason)));
+        const originalFetch = window.fetch;
+        window.fetch = async (...args) => {
+          try {
+            const response = await originalFetch(...args);
+            window.__caboRequests.push({ url: String(args[0]), status: response.status });
+            return response;
+          } catch (error) {
+            window.__caboRequests.push({ url: String(args[0]), error: String(error) });
+            throw error;
+          }
+        };
         button('开始游戏').click();
         await until(() => document.querySelector('.wipe') || button('看牌'));
         const wipe = document.querySelector('.wipe');
