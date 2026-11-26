@@ -185,6 +185,7 @@ async function main() {
     await cdp.send('Runtime.enable');
     await waitForDocument(cdp);
     await cdp.send('Page.enable');
+    await cdp.send('Page.bringToFront');
     const evaluation = await cdp.send('Runtime.evaluate', {
       awaitPromise: true,
       returnByValue: true,
@@ -201,6 +202,13 @@ async function main() {
         };
         await until(() => document.readyState === 'complete' && button('开始游戏'));
         button('开始游戏').click();
+        const wipe = await until(() => document.querySelector('.wipe'));
+        await sleep(80);
+        const wipeStyle = getComputedStyle(wipe);
+        const transition = {
+          clipPath: wipeStyle.clipPath,
+          willChange: wipeStyle.willChange,
+        };
         await until(() => button('看牌'));
         button('看牌').click();
         await until(() => document.querySelectorAll('#myHand .card').length === 4 && document.querySelector('#actions .hint')?.textContent.includes('选 2 张'));
@@ -243,7 +251,7 @@ async function main() {
           },
         };
 
-        return initial;
+        return { ...initial, transition };
       })()`,
     });
     if (evaluation.exceptionDetails || !evaluation.result.value) {
@@ -252,6 +260,9 @@ async function main() {
     const result = evaluation.result.value;
     if (result.layout.scrollWidth > result.layout.viewport.width) {
       throw new Error(`Default layout overflows horizontally: ${result.layout.scrollWidth} > ${result.layout.viewport.width}`);
+    }
+    if (result.transition.clipPath !== 'none' || result.transition.willChange !== 'transform') {
+      throw new Error(`Start transition should use a compositor transform: ${JSON.stringify(result.transition)}`);
     }
     for (const name of ['danger', 'primary']) {
       const box = result.layout[name];
@@ -311,29 +322,69 @@ async function main() {
         await until(() => document.querySelector('.discard-holder .card .front'));
         const top = document.querySelector('.discard-holder .card .front');
         const style = getComputedStyle(top);
+        const { showCaboBanner } = await import('/effects.mjs');
+        showCaboBanner(0);
+        await until(() => document.querySelector('.cabo-callout'));
+        const callout = document.querySelector('.cabo-callout');
+        const calloutStyle = getComputedStyle(callout);
+        const calloutRect = callout.getBoundingClientRect();
+        const playerRect = document.getElementById('meBar').getBoundingClientRect();
+        callout.style.animation = 'none';
+        callout.style.opacity = '1';
         return {
-          count: Number(document.querySelector('#discardCount').textContent),
-          fanCount: document.querySelectorAll('.discard-fan').length,
-          backgroundColor: style.backgroundColor,
-          backgroundImage: style.backgroundImage,
-          backdropFilter: style.backdropFilter,
+          discard: {
+            count: Number(document.querySelector('#discardCount').textContent),
+            fanCount: document.querySelectorAll('.discard-fan').length,
+            backgroundColor: style.backgroundColor,
+            backgroundImage: style.backgroundImage,
+            backdropFilter: style.backdropFilter,
+          },
+          cabo: {
+            color: calloutStyle.color,
+            fontFamily: calloutStyle.fontFamily,
+            fontSize: calloutStyle.fontSize,
+            fontStyle: calloutStyle.fontStyle,
+            fontWeight: calloutStyle.fontWeight,
+            width: calloutRect.width,
+            height: calloutRect.height,
+            bottom: calloutRect.bottom,
+            playerTop: playerRect.top,
+            abovePlayerBar: calloutRect.bottom <= playerRect.top,
+            borderColor: calloutStyle.borderColor,
+            boxShadow: calloutStyle.boxShadow,
+            backgroundImage: calloutStyle.backgroundImage,
+            textStrokeWidth: calloutStyle.getPropertyValue('-webkit-text-stroke-width'),
+            oldCount: document.querySelectorAll('.cabo-balloon').length,
+          },
         };
       })()`,
     });
     if (discardEvaluation.exceptionDetails || !discardEvaluation.result.value) {
       throw new Error(JSON.stringify(discardEvaluation.exceptionDetails || discardEvaluation.result));
     }
-    const discard = discardEvaluation.result.value;
+    const { discard, cabo } = discardEvaluation.result.value;
     if (discard.count < 1 || discard.fanCount !== 0) {
       throw new Error(`Discard pile should show only its top card: ${JSON.stringify(discard)}`);
     }
     if (discard.backgroundColor !== 'rgb(255, 255, 255)' || discard.backdropFilter !== 'none') {
       throw new Error(`Discard top card should be opaque white: ${JSON.stringify(discard)}`);
     }
+    if (cabo.oldCount !== 0 || cabo.color !== 'rgb(139, 120, 154)' || cabo.backgroundImage === 'none' || cabo.textStrokeWidth !== '0px') {
+      throw new Error(`CABO callout should use liquid glass: ${JSON.stringify(cabo)}`);
+    }
+    if (!cabo.fontFamily.includes('Comic Sans MS') || cabo.fontStyle !== 'italic' || cabo.fontWeight !== '700') {
+      throw new Error(`CABO callout typography is incorrect: ${JSON.stringify(cabo)}`);
+    }
+    if (!cabo.borderColor.includes('255, 255, 255') || !cabo.boxShadow.includes('217, 106, 114')) {
+      throw new Error(`CABO callout should have a shallow red glow: ${JSON.stringify(cabo)}`);
+    }
+    if (!cabo.abovePlayerBar || cabo.width > 280 || Number.parseFloat(cabo.fontSize) > 54) {
+      throw new Error(`CABO callout should be smaller and above player info: ${JSON.stringify(cabo)}`);
+    }
 
     const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
-    console.log(JSON.stringify({ ...result, compact: compact.result.value, discard }, null, 2));
+    console.log(JSON.stringify({ ...result, compact: compact.result.value, discard, cabo }, null, 2));
     console.log(`Screenshot: ${screenshotPath}`);
     void cdp.send('Browser.close').catch(() => {});
   } finally {

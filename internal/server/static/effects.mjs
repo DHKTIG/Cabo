@@ -55,7 +55,7 @@ function cardRect(pid, slot) {
 /* ---------------- 转场与「完成」演出 ---------------- */
 
 // 圆形扩散转场：从指落点铺满整屏，再原路收回去露出新画面。
-// clip-path: circle() 在 Chromium 里可以直接补间，所以不用 @property。
+// 用独立圆形合成层做 scale，避免全屏 clip-path 每帧重绘。
 export function circleWipe(x, y, atCover) {
   if (reduceMotion()) {
     atCover();
@@ -73,10 +73,10 @@ export function circleWipe(x, y, atCover) {
     far(0, innerHeight),
     far(innerWidth, innerHeight)
   ) + 40;
-  const grow = [
-    { clipPath: 'circle(0px at var(--wx) var(--wy))' },
-    { clipPath: `circle(${r}px at var(--wx) var(--wy))` },
-  ];
+  el.style.width = r * 2 + 'px';
+  el.style.height = r * 2 + 'px';
+  el.style.margin = -r + 'px';
+  const grow = [{ transform: 'scale(0)' }, { transform: 'scale(1)' }];
   const shrink = [grow[1], grow[0]];
   const run = (kf, dur, delay) =>
     el.animate(kf, { duration: dur, delay, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'forwards' }).finished;
@@ -349,23 +349,23 @@ export function playFlights(events) {
   return new Promise((r) => setTimeout(r, total + 40));
 }
 
-// 喊 CABO：金色气球字，盖在喊话者座位的正中间
+// 喊 CABO：轻量水玻璃 callout，浮在喊话者座位旁边
 export function showCaboBanner(pid) {
   const who = typeof pid === 'number' ? pid : 0;
   const r = panelRect(who);
   if (!r) return;
 
   const el = document.createElement('div');
-  el.className = 'cabo-balloon';
-  el.dataset.text = 'CABO';
+  el.className = 'cabo-callout';
   el.textContent = 'CABO';
-  el.style.top = r.top + r.height / 2 + 'px';
   $('fx').appendChild(el);
 
   // 以座位中心为锚，左右各夹一点，避免字太长时贴出视口
   const w = el.offsetWidth;
   const cx = r.left + r.width / 2;
   el.style.left = clamp(cx, w / 2 + 8, innerWidth - w / 2 - 8) + 'px';
+  const centerY = who === 0 ? r.top - el.offsetHeight / 2 - 42 : r.top + r.height / 2;
+  el.style.top = centerY + 'px';
 
   setTimeout(() => el.remove(), 1900);
 }
