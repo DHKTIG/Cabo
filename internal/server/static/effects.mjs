@@ -57,7 +57,7 @@ function cardRect(pid, slot) {
 // 圆形扩散转场：从指落点铺满整屏，再原路收回去露出新画面。
 // 用独立圆形合成层做 scale，避免全屏 clip-path 每帧重绘。
 export function circleWipe(x, y, atCover) {
-  if (reduceMotion()) {
+  if (reduceMotion() || document.visibilityState === 'hidden') {
     atCover();
     return Promise.resolve();
   }

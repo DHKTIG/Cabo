@@ -202,13 +202,14 @@ async function main() {
         };
         await until(() => window.__CABO_READY__ === true && button('开始游戏'));
         button('开始游戏').click();
-        const wipe = await until(() => document.querySelector('.wipe'));
-        await sleep(80);
-        const wipeStyle = getComputedStyle(wipe);
-        const transition = {
+        await until(() => document.querySelector('.wipe') || button('看牌'));
+        const wipe = document.querySelector('.wipe');
+        if (wipe) await sleep(80);
+        const wipeStyle = wipe ? getComputedStyle(wipe) : null;
+        const transition = wipe ? {
           clipPath: wipeStyle.clipPath,
           willChange: wipeStyle.willChange,
-        };
+        } : { skipped: document.visibilityState === 'hidden' };
         await until(() => button('看牌'));
         button('看牌').click();
         await until(() => document.querySelectorAll('#myHand .card').length === 4 && document.querySelector('#actions .hint')?.textContent.includes('选 2 张'));
@@ -261,7 +262,7 @@ async function main() {
     if (result.layout.scrollWidth > result.layout.viewport.width) {
       throw new Error(`Default layout overflows horizontally: ${result.layout.scrollWidth} > ${result.layout.viewport.width}`);
     }
-    if (result.transition.clipPath !== 'none' || result.transition.willChange !== 'transform') {
+    if (!result.transition.skipped && (result.transition.clipPath !== 'none' || result.transition.willChange !== 'transform')) {
       throw new Error(`Start transition should use a compositor transform: ${JSON.stringify(result.transition)}`);
     }
     for (const name of ['danger', 'primary']) {
