@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -36,7 +37,7 @@ func New() *Server {
 		panic(err)
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	mux.Handle("/", staticHandler(sub))
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/new", s.handleNew)
 	mux.HandleFunc("/api/state", s.handleState)
@@ -47,6 +48,23 @@ func New() *Server {
 	mux.HandleFunc("/api/stats", s.handleStats)
 	s.mux = mux
 	return s
+}
+
+func staticHandler(fsys fs.FS) http.Handler {
+	files := http.FileServer(http.FS(fsys))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch path.Ext(r.URL.Path) {
+		case ".html":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		case ".css":
+			w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		case ".js", ".mjs":
+			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		case ".png":
+			w.Header().Set("Content-Type", "image/png")
+		}
+		files.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

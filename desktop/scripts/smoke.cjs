@@ -214,7 +214,7 @@ async function main() {
           const wipe = document.querySelector('.wipe');
           const debug = {
             text: document.body.innerText.slice(0, 1200),
-            href: location.href,
+            href: location.origin + location.pathname + location.search,
             visibility: document.visibilityState,
             ready: window.__CABO_READY__,
             startClass: document.querySelector('#startOverlay')?.className,

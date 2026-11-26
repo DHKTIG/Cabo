@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"cabo/internal/engine"
@@ -82,6 +83,9 @@ func TestStaticAssetsEmbedded(t *testing.T) {
 		}
 		if resp.ContentLength == 0 {
 			t.Fatalf("%s 内容为空", p)
+		}
+		if strings.HasSuffix(p, ".mjs") && resp.Header.Get("Content-Type") != "text/javascript; charset=utf-8" {
+			t.Fatalf("%s MIME 类型错误：%q", p, resp.Header.Get("Content-Type"))
 		}
 	}
 }
