@@ -200,7 +200,7 @@ async function main() {
           }
           throw new Error('Timed out waiting for game UI: ' + document.body.innerText.slice(0, 1200));
         };
-        await until(() => document.readyState === 'complete' && button('开始游戏'));
+        await until(() => window.__CABO_READY__ === true && button('开始游戏'));
         button('开始游戏').click();
         const wipe = await until(() => document.querySelector('.wipe'));
         await sleep(80);

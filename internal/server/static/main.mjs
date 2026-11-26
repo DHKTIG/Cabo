@@ -103,3 +103,5 @@ if (location.search.includes('dev=1')) {
   };
   import('./devshots.mjs');
 }
+
+window.__CABO_READY__ = true;
