@@ -253,7 +253,7 @@ async function main() {
         const transition = wipe ? {
           clipPath: wipeStyle.clipPath,
           willChange: wipeStyle.willChange,
-        } : { skipped: document.visibilityState === 'hidden' };
+        } : { skipped: document.visibilityState === 'hidden' || window.matchMedia('(prefers-reduced-motion: reduce)').matches };
         await until(() => button('看牌'));
         button('看牌').click();
         await until(() => document.querySelectorAll('#myHand .card').length === 4 && document.querySelector('#actions .hint')?.textContent.includes('选 2 张'));
