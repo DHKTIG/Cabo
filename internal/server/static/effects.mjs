@@ -88,12 +88,17 @@ export function circleWipe(x, y, atCover) {
     swapped = true;
     atCover();
   };
-  const chain = run(grow, 420, 0).then(() => {
-    cover();
-    return run(shrink, 460, 60);
-  });
   const guard = sleep(1500).then(cover);
-  return Promise.race([chain, guard]).catch(cover).then(() => el.remove());
+  let chain;
+  try {
+    chain = run(grow, 420, 0).then(() => {
+      cover();
+      return run(shrink, 460, 60);
+    });
+  } catch {
+    cover();
+  }
+  return Promise.race([chain || Promise.resolve(), guard]).catch(cover).then(() => el.remove());
 }
 
 export const centerOf = (el) => {
