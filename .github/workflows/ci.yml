@@ -80,14 +80,14 @@ jobs:
         run: CABO_EXE_PATH=../artifacts/app/cabo.exe npm run test:smoke
 
       - name: upload Portable EXE
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cabo-windows-amd64-portable
           path: artifacts/app/cabo.exe
           if-no-files-found: error
 
       - name: upload NSIS installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cabo-windows-x64-setup
           path: artifacts/electron/CABO-*-windows-x64-setup.exe
@@ -153,7 +153,7 @@ jobs:
           cp "$apk" android/app/build/outputs/apk/debug/cabo-1.0.0-android-arm64.apk
 
       - name: upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cabo-android-arm64-apk
           path: android/app/build/outputs/apk/debug/cabo-1.0.0-android-arm64.apk
