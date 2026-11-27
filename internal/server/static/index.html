@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CABO 卡波</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -66,63 +66,67 @@
       <span class="brand-sub">记住你的牌 · 压到最低 · 喊出来</span>
     </div>
 
-    <label class="field">
-      <span>你的名字</span>
-      <input id="nameInput" maxlength="8" placeholder="玩家" value="玩家">
-    </label>
+    <div class="setup-fields">
+      <label class="field">
+        <span>你的名字</span>
+        <input id="nameInput" maxlength="8" placeholder="玩家" value="玩家">
+      </label>
 
-    <div class="field">
-      <span>电脑对手</span>
-      <div class="segmented" id="aiPicker">
-        <button data-ai="1">1 个</button>
-        <button data-ai="2" class="on">2 个</button>
-        <button data-ai="3">3 个</button>
+      <div class="field">
+        <span>电脑对手</span>
+        <div class="segmented" id="aiPicker">
+          <button data-ai="1">1 个</button>
+          <button data-ai="2" class="on">2 个</button>
+          <button data-ai="3">3 个</button>
+        </div>
       </div>
-    </div>
 
-    <div class="field">
-      <span>电脑强度</span>
-      <div class="segmented" id="levelPicker">
-        <button data-lv="0">轻松</button>
-        <button data-lv="1" class="on">标准</button>
-        <button data-lv="2">较真</button>
+      <div class="field">
+        <span>电脑强度</span>
+        <div class="segmented" id="levelPicker">
+          <button data-lv="0">轻松</button>
+          <button data-lv="1" class="on">标准</button>
+          <button data-lv="2">较真</button>
+        </div>
       </div>
+
+      <button class="primary" id="btnStart">开始游戏</button>
     </div>
 
-    <button class="primary" id="btnStart">开始游戏</button>
+    <div class="setup-info">
+      <div class="legend">
+        <div class="legend-item" data-tone="zero"><i></i><span>0 分</span></div>
+        <div class="legend-item" data-tone="low"><i></i><span>1–6</span></div>
+        <div class="legend-item" data-tone="peek"><i></i><span>看自己</span></div>
+        <div class="legend-item" data-tone="spy"><i></i><span>看对手</span></div>
+        <div class="legend-item" data-tone="swap"><i></i><span>换牌</span></div>
+        <div class="legend-item" data-tone="high"><i></i><span>13 高危</span></div>
+      </div>
 
-    <div class="legend">
-      <div class="legend-item" data-tone="zero"><i></i><span>0 分</span></div>
-      <div class="legend-item" data-tone="low"><i></i><span>1–6</span></div>
-      <div class="legend-item" data-tone="peek"><i></i><span>看自己</span></div>
-      <div class="legend-item" data-tone="spy"><i></i><span>看对手</span></div>
-      <div class="legend-item" data-tone="swap"><i></i><span>换牌</span></div>
-      <div class="legend-item" data-tone="high"><i></i><span>13 高危</span></div>
-    </div>
+      <div class="goal">
+        <div class="goal-head">取胜条件</div>
+        <p>累计分数<strong>超过 100 分</strong>时游戏结束，<strong>总分最低</strong>的人获胜。</p>
+        <p class="goal-note">如果总分正好 100 分，可以重置为 50 分，每场限一次。</p>
+      </div>
 
-    <div class="goal">
-      <div class="goal-head">取胜条件</div>
-      <p>累计分数<strong>超过 100 分</strong>时游戏结束，<strong>总分最低</strong>的人获胜。</p>
-      <p class="goal-note">如果总分正好 100 分，可以重置为 50 分，每场限一次。</p>
-    </div>
+      <details class="rules">
+        <summary>怎么玩</summary>
+        <ul>
+          <li>每人 4 张暗牌，开局可看其中 2 张，之后全靠记忆。</li>
+          <li>回合三选一：摸牌堆、拿弃牌堆顶、喊 CABO。</li>
+          <li>7、8 看自己一张，9、10 看对手一张，11、12 交换场上任意两张。</li>
+          <li>拿弃牌堆时，可一次换出手上两张同数字的牌，只吃进一张。</li>
+          <li>觉得自己点数最低就喊 CABO，其他人各再走一回合后摊牌。</li>
+          <li>喊的人点数最低得 0 分，否则点数加 10 分；其余人按手牌点数计分。</li>
+          <li>牌堆摸空时把弃牌堆洗回来继续，弃牌堆上会留一张明牌。</li>
+          <li>连续把已知的牌换成更小的会攒连击；每轮结束给一张回合回顾，记录会跨局保留。</li>
+        </ul>
+      </details>
 
-    <details class="rules">
-      <summary>怎么玩</summary>
-      <ul>
-        <li>每人 4 张暗牌，开局可看其中 2 张，之后全靠记忆。</li>
-        <li>回合三选一：摸牌堆、拿弃牌堆顶、喊 CABO。</li>
-        <li>7、8 看自己一张，9、10 看对手一张，11、12 交换场上任意两张。</li>
-        <li>拿弃牌堆时，可一次换出手上两张同数字的牌，只吃进一张。</li>
-        <li>觉得自己点数最低就喊 CABO，其他人各再走一回合后摊牌。</li>
-        <li>喊的人点数最低得 0 分，否则点数加 10 分；其余人按手牌点数计分。</li>
-        <li>牌堆摸空时把弃牌堆洗回来继续，弃牌堆上会留一张明牌。</li>
-        <li>连续把已知的牌换成更小的会攒连击；每轮结束给一张回合回顾，记录会跨局保留。</li>
-      </ul>
-    </details>
-
-    <div class="snd-foot">
-      <div class="snd-mount" data-snd-mount></div>
-      <span class="snd-tip">点开调音乐和音效</span>
+      <div class="snd-foot">
+        <div class="snd-mount" data-snd-mount></div>
+        <span class="snd-tip">点开调音乐和音效</span>
+      </div>
     </div>
   </div>
 </div>

@@ -61,9 +61,12 @@ body {
   font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
   color: var(--ink);
   overflow: hidden;
+  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   background: var(--bg);
 }
+
+button, .card { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
 /* ---------- 背景：中性灰白 + 顶部柔光 + 细噪点 ---------- */
 
@@ -94,8 +97,9 @@ body {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-rows: clamp(46px, 6.2vh, 56px) 1fr;
+  grid-template-rows: clamp(46px, 6.2vh, 56px) minmax(0, 1fr);
   height: 100vh;
+  height: 100dvh;
 }
 
 /* ---------- 顶栏 ---------- */
@@ -104,7 +108,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 22px;
+  padding: 0 max(22px, env(safe-area-inset-right)) 0 max(22px, env(safe-area-inset-left));
   border-bottom: 1px solid rgba(255, 255, 255, 0.65);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.4));
   backdrop-filter: blur(14px) saturate(1.1);
@@ -191,7 +195,8 @@ body {
   display: grid;
   grid-template-rows: auto minmax(84px, 1fr) auto auto;
   gap: clamp(4px, 1vh, 10px);
-  padding: clamp(10px, 2.2vh, 20px) 26px clamp(8px, 1.8vh, 20px);
+  padding: clamp(10px, 2.2vh, 20px) max(26px, env(safe-area-inset-right)) clamp(8px, 1.8vh, 20px) max(26px, env(safe-area-inset-left));
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -472,6 +477,8 @@ body {
   100% { opacity: 0; transform: translate(-50%, -128%) scale(0.95); }
 }
 
+.pending-slot:empty { display: none; }
+
 .pending-slot {
   min-width: 120px;
   min-height: calc(var(--hand-w) * 1.42 + 12px);
@@ -635,7 +642,7 @@ body {
 }
 
 .card.small { --w: var(--seat-w); border-radius: 11px; }
-.card.small .front .tag { font-size: 8px; padding: 2px 6px; top: 5px; right: 5px; }
+.card.small .front .tag { font-size: 7px; padding: 1px 4px; top: 4px; right: 4px; }
 .card.small .front .dot { left: 6px; bottom: 6px; width: 6px; height: 6px; }
 
 .card .face {
@@ -680,11 +687,11 @@ body {
 
 .card .tag {
   position: absolute;
-  top: 7px;
-  right: 7px;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 3px 8px;
+  top: 5px;
+  right: 5px;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 6px;
   border-radius: 999px;
   color: var(--tone, var(--t-low));
   background: rgba(255, 255, 255, 0.6);
@@ -1306,7 +1313,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
   background: rgba(236, 240, 245, 0.72);
   backdrop-filter: blur(14px) saturate(1.1);
   animation: fadeIn 0.3s ease;
@@ -1335,6 +1342,7 @@ body {
   width: 400px;
   max-width: 100%;
   max-height: 92vh;
+  max-height: 92dvh;
   overflow-y: auto;
   padding: 34px 38px 28px;
   border-radius: 30px;
@@ -1973,9 +1981,147 @@ body {
   .me-progress { display: none; }
 }
 
+/* 手机竖屏是降级布局：压缩留白与控件，优先保证手牌和操作按钮完整可见。 */
+@media (orientation: portrait) and (max-width: 560px) {
+  #app { grid-template-rows: 44px minmax(0, 1fr); }
+  .topbar { gap: 6px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+  .logo { font-size: 13px; letter-spacing: 3px; margin-right: 0; }
+  .logo-mark { width: 12px; height: 12px; }
+  .chip { font-size: 10px; padding: 3px 8px; }
+  .ghost { font-size: 10px; padding: 5px 10px; }
+  .snd-btn { width: 28px; height: 28px; }
+  .table { padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); gap: 4px; }
+  .seat { padding: 6px 9px; border-radius: 14px; }
+  .seat-head { gap: 8px; margin-bottom: 4px; }
+  .avatar { width: 24px; height: 24px; }
+  .seat-progress { margin-bottom: 4px; }
+  .seat-hand { gap: 4px; }
+  .card { --w: 56px; }
+  .card.small { --w: 36px; }
+  .middle { gap: 18px; }
+  .pending-slot { min-width: 70px; }
+  .me-bar { max-width: 100%; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 4px 8px 4px 5px; font-size: 10px; }
+  .me-bar .avatar { width: 24px; height: 24px; }
+  .me-est { font-size: 9px; padding: 2px 6px; }
+  .turn-badge { font-size: 9px; padding: 2px 7px; }
+  .hand { min-height: calc(56px * 1.42 + 6px); gap: 4px; }
+  .hand .card { margin-left: -8px; }
+  .actions { min-height: 38px; gap: 7px; }
+  .actions .btn { min-height: 38px; padding: 9px 14px; font-size: 11px; }
+  .actions .hint { font-size: 10px; }
+  .overlay { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .panel { padding: 24px; border-radius: 24px; }
+}
+
+/* 手机横屏保持电脑端的上下关系：对手在上、牌堆居中、自己的牌和操作在下。
+   通过压缩座位、手牌和间距，让 568×320 这类常见横屏也不需要滚动整个牌桌。 */
+@media (orientation: landscape) and (max-width: 1000px) and (max-height: 620px) {
+  :root {
+    --hand-w: clamp(40px, 13vh, 58px);
+    --seat-w: clamp(24px, 8vh, 34px);
+    --pile-w: clamp(34px, 11vh, 46px);
+  }
+
+  #app { grid-template-rows: 36px minmax(0, 1fr); }
+  .topbar { gap: 6px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+  .logo { font-size: 13px; letter-spacing: 3px; margin-right: 0; }
+  .logo-mark { width: 12px; height: 12px; }
+  .chip { font-size: 10px; padding: 3px 8px; }
+  .ghost { font-size: 10px; padding: 5px 10px; }
+  .snd-btn { width: 28px; height: 28px; }
+
+  .table {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "seats"
+      "middle"
+      "me"
+      "actions";
+    gap: 4px 8px;
+    padding: 6px max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    overflow: hidden;
+  }
+
+  .seats {
+    grid-area: seats;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: stretch;
+    gap: 6px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .seat { flex: 0 1 180px; min-width: 0; width: auto; padding: 4px 7px; border-radius: 12px; }
+  .seat-head { gap: 6px; margin-bottom: 2px; }
+  .avatar { width: 18px; height: 18px; }
+  .seat-name, .seat-score { font-size: 10px; }
+  .seat-progress { height: 2px; margin-bottom: 2px; }
+  .seat-hand { justify-content: center; gap: 2px; }
+  .seat-hand .card { margin-left: -4px; }
+  .seat-hand .card:first-child { margin-left: 0; }
+  .card { --w: var(--hand-w); }
+  .card.small { --w: var(--seat-w); }
+
+  .middle { grid-area: middle; min-height: 0; gap: clamp(18px, 5vw, 42px); }
+  .middle::before { width: min(72vw, 620px); height: min(36vh, 150px); }
+  .middle::after { width: min(68vw, 580px); height: min(30vh, 124px); }
+  .pile { gap: 4px; }
+  .pile-label { font-size: 8.5px; letter-spacing: 0.5px; }
+  .pending-slot { min-width: 60px; min-height: 0; }
+  .pending-hint { font-size: 8.5px; letter-spacing: 1px; }
+
+  .table > .me { grid-area: me; flex-direction: row; justify-content: center; align-items: center; gap: 10px; min-width: 0; }
+  .me-bar { flex: 0 1 260px; max-width: 260px; flex-wrap: wrap; justify-content: center; gap: 5px; padding: 4px 8px 4px 5px; font-size: 10px; }
+  .me-bar .avatar { width: 20px; height: 20px; }
+  .me-est { font-size: 9px; padding: 2px 6px; }
+  .turn-badge { font-size: 9px; padding: 2px 7px; }
+  .hand { flex: 0 0 auto; min-height: calc(var(--hand-w) * 1.42 + 6px); gap: 4px; }
+  .hand .card { --fx: 0deg; margin-left: -6px; }
+  .hand .card:nth-child(1), .hand .card:nth-child(4) { --fy: 3px; }
+  .hand .card:nth-child(2), .hand .card:nth-child(3) { --fy: 1px; }
+
+  .actions { grid-area: actions; min-height: 32px; flex-wrap: wrap; gap: 4px 7px; padding: 0 4px; }
+  .actions .btn { min-height: 32px; padding: 7px 12px; font-size: 10.5px; }
+  .actions .hint { font-size: 9.5px; letter-spacing: 0; }
+
+  .overlay { padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+  #startOverlay .panel {
+    width: min(780px, calc(100vw - 20px));
+    max-height: calc(100dvh - 20px);
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    grid-template-areas:
+      "brand fields"
+      "info fields";
+    gap: 8px 22px;
+    align-items: start;
+    overflow-x: hidden;
+  }
+  #startOverlay .brand-mark { grid-area: brand; display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; margin-bottom: 0; text-align: left; }
+  #startOverlay .brand-mist { grid-column: 1; grid-row: 1 / 3; width: 54px; height: 54px; margin: 0; }
+  #startOverlay .brand-cabo { grid-column: 2; font-size: 28px; letter-spacing: 8px; text-indent: 8px; text-align: left; }
+  #startOverlay .brand-sub { grid-column: 2; margin-top: 2px; font-size: 10px; text-align: left; }
+  #startOverlay .setup-fields { grid-area: fields; min-width: 0; }
+  #startOverlay .setup-info { grid-area: info; min-width: 0; }
+  #startOverlay .field { margin-bottom: 10px; }
+  #startOverlay .field > span { margin-bottom: 5px; font-size: 11px; }
+  #startOverlay .field input { padding: 9px 12px; font-size: 13px; }
+  #startOverlay .segmented { padding: 4px; }
+  #startOverlay .segmented button { padding: 7px 0; font-size: 11.5px; }
+  #startOverlay .panel .primary { padding: 12px; font-size: 14px; }
+  #startOverlay .legend { margin-top: 0; padding-top: 8px; gap: 5px 10px; }
+  #startOverlay .goal { margin-top: 9px; padding: 9px 12px; }
+  #startOverlay .goal p { font-size: 11px; line-height: 1.55; }
+  #startOverlay .rules { margin-top: 8px; }
+  #startOverlay .snd-foot { margin-top: 8px; }
+}
+
 /* 矮窗口：卡牌收小、手牌扇收平叠紧，保证底部操作按钮不被裁掉（见 HANDOVER 布局适配）。
    必须写在 max-width:900 块之后：同为 .card 选择器，靠顺序压过它的 --w:68px */
-@media (max-height: 620px) {
+@media (max-height: 620px) and (orientation: portrait), (max-height: 620px) and (min-width: 1001px) {
   .card { --w: 58px; }
   .card.small { --w: 40px; }
   .hand { min-height: calc(58px * 1.42 + 6px); gap: 4px; }

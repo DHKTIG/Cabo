@@ -346,6 +346,68 @@ async function main() {
       throw new Error(`Compact layout lost action buttons: ${JSON.stringify(compact.result.value)}`);
     }
 
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 640,
+      height: 360,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const landscape = await cdp.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `(() => {
+        const table = document.querySelector('.table');
+        const actions = document.querySelector('#actions');
+        const seats = document.querySelector('.seats');
+        const middle = document.querySelector('.middle');
+        const me = document.querySelector('.me');
+        const buttons = [...actions.querySelectorAll('button')];
+        const rect = element => {
+          const box = element.getBoundingClientRect();
+          return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+        };
+        return {
+          viewport: { width: innerWidth, height: innerHeight },
+          scrollWidth: document.documentElement.scrollWidth,
+          tableClientHeight: table.clientHeight,
+          tableScrollHeight: table.scrollHeight,
+          dangerVisible: buttons.some(b => b.textContent.trim() === '喊 CABO'),
+          primaryVisible: buttons.some(b => b.textContent.trim() === '摸牌堆'),
+          order: {
+            seatsBottom: seats.getBoundingClientRect().bottom,
+            middleTop: middle.getBoundingClientRect().top,
+            middleBottom: middle.getBoundingClientRect().bottom,
+            meTop: me.getBoundingClientRect().top,
+            meBottom: me.getBoundingClientRect().bottom,
+            actionsTop: actions.getBoundingClientRect().top,
+          },
+          buttons: buttons.map(b => ({ text: b.textContent.trim(), ...rect(b) })),
+        };
+      })()`,
+    });
+    await cdp.send('Emulation.clearDeviceMetricsOverride');
+    if (landscape.exceptionDetails || !landscape.result.value) {
+      throw new Error(JSON.stringify(landscape.exceptionDetails || landscape.result));
+    }
+    if (landscape.result.value.scrollWidth > landscape.result.value.viewport.width) {
+      throw new Error(`Landscape layout overflows horizontally: ${JSON.stringify(landscape.result.value)}`);
+    }
+    if (landscape.result.value.tableScrollHeight > landscape.result.value.tableClientHeight + 1) {
+      throw new Error(`Landscape table should not scroll: ${JSON.stringify(landscape.result.value)}`);
+    }
+    if (!landscape.result.value.dangerVisible || !landscape.result.value.primaryVisible) {
+      throw new Error(`Landscape layout lost action buttons: ${JSON.stringify(landscape.result.value)}`);
+    }
+    const order = landscape.result.value.order;
+    if (order.seatsBottom > order.middleTop + 1 || order.middleBottom > order.meTop + 1 || order.meBottom > order.actionsTop + 1) {
+      throw new Error(`Landscape layout should keep opponents above the player: ${JSON.stringify(order)}`);
+    }
+    for (const button of landscape.result.value.buttons) {
+      if (button.left < 0 || button.right > landscape.result.value.viewport.width || button.top < 0 || button.bottom > landscape.result.value.viewport.height) {
+        throw new Error(`Landscape button is outside the viewport: ${JSON.stringify(button)}`);
+      }
+    }
+
     const discardEvaluation = await cdp.send('Runtime.evaluate', {
       awaitPromise: true,
       returnByValue: true,
@@ -429,7 +491,7 @@ async function main() {
 
     const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
-    console.log(JSON.stringify({ ...result, compact: compact.result.value, discard, cabo }, null, 2));
+    console.log(JSON.stringify({ ...result, compact: compact.result.value, landscape: landscape.result.value, discard, cabo }, null, 2));
     console.log(`Screenshot: ${screenshotPath}`);
     void cdp.send('Browser.close').catch(() => {});
   } finally {
