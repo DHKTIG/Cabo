@@ -535,7 +535,12 @@ button, .card { -webkit-tap-highlight-color: transparent; touch-action: manipula
   100% { opacity: 0; box-shadow: 0 0 0 22px var(--accent); }
 }
 
-.discard-holder .card { --w: var(--pile-w); }
+.discard-holder .card {
+  --w: var(--pile-w);
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+}
 .discard-holder .card .front {
   background: #fff;
   backdrop-filter: none;
@@ -759,7 +764,6 @@ button, .card { -webkit-tap-highlight-color: transparent; touch-action: manipula
 }
 .card.picked .front {
   box-shadow: 0 18px 32px rgba(124, 138, 214, 0.32), inset 0 0 0 2px var(--accent);
-  animation: pickedGlow 1.5s ease-in-out infinite;
 }
 
 /* 选中环挂在 .card 上而不是 .front 上：开局挑 2 张看的时候牌全是背面，
@@ -772,17 +776,12 @@ button, .card { -webkit-tap-highlight-color: transparent; touch-action: manipula
   border: 2px solid var(--accent);
   box-shadow: 0 0 0 4px rgba(124, 138, 214, 0.16);
   pointer-events: none;
-  animation: pickedRing 1.5s ease-in-out infinite;
+  animation: pickedRing 1.5s ease-in-out 2;
 }
 
 @keyframes pickedRing {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.62; transform: scale(1.035); }
-}
-
-@keyframes pickedGlow {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.055); }
 }
 
 /* 发牌：从牌堆方向斜着甩进来，落定时轻微过冲——像真的纸牌拍在桌上。

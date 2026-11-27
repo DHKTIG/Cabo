@@ -2,7 +2,7 @@ import { state, snd, sndMode, sleep, clamp } from './core.mjs';
 import { $ } from './dom.mjs';
 import { api } from './api.mjs';
 import { comboTier } from './stats.mjs';
-import { render, renderCareer } from './render.mjs';
+import { render, renderCareer, renderSelection } from './render.mjs';
 import { toast, comboFlare, centerOf, circleWipe, doneBurst, syncFlash, playFlights, playEvents, pulseSeat } from './effects.mjs';
 
 /* ---------------- 交互 ---------------- */
@@ -23,7 +23,7 @@ export function pickCard(player, slot) {
       snd('error');
       return;
     }
-    render();
+    renderSelection();
     return;
   }
   if (state.mode === 'place') {
@@ -54,7 +54,7 @@ export function pickCard(player, slot) {
       snd('error');
       return;
     }
-    render();
+    renderSelection();
     return;
   }
 }

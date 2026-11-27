@@ -427,7 +427,20 @@ async function main() {
         await until(() => button('弃掉'));
         button('弃掉').click();
         await until(() => document.querySelector('.discard-holder .card .front'));
+        await sleep(500);
         const top = document.querySelector('.discard-holder .card .front');
+        const card = top.closest('.card');
+        const holder = document.querySelector('.discard-holder');
+        card.getAnimations().forEach((animation) => animation.finish());
+        card.style.animation = 'none';
+        card.style.transform = 'none';
+        const cardRect = card.getBoundingClientRect();
+        const holderRect = holder.getBoundingClientRect();
+        const holderStyle = getComputedStyle(holder);
+        const innerLeft = holderRect.left + Number.parseFloat(holderStyle.borderLeftWidth);
+        const innerTop = holderRect.top + Number.parseFloat(holderStyle.borderTopWidth);
+        const innerRight = holderRect.right - Number.parseFloat(holderStyle.borderRightWidth);
+        const innerBottom = holderRect.bottom - Number.parseFloat(holderStyle.borderBottomWidth);
         const style = getComputedStyle(top);
         const { showCaboBanner } = await import('/effects.mjs');
         showCaboBanner(0);
@@ -445,6 +458,14 @@ async function main() {
             backgroundColor: style.backgroundColor,
             backgroundImage: style.backgroundImage,
             backdropFilter: style.backdropFilter,
+            cardRect: { left: cardRect.left, top: cardRect.top, right: cardRect.right, bottom: cardRect.bottom },
+            holderRect: { left: holderRect.left, top: holderRect.top, right: holderRect.right, bottom: holderRect.bottom },
+            innerRect: { left: innerLeft, top: innerTop, right: innerRight, bottom: innerBottom },
+            transform: getComputedStyle(card).transform,
+            aligned: Math.abs(cardRect.left - innerLeft) < 0.6
+              && Math.abs(cardRect.top - innerTop) < 0.6
+              && Math.abs(cardRect.right - innerRight) < 0.6
+              && Math.abs(cardRect.bottom - innerBottom) < 0.6,
           },
           cabo: {
             color: calloutStyle.color,
@@ -475,6 +496,9 @@ async function main() {
     }
     if (discard.backgroundColor !== 'rgb(255, 255, 255)' || discard.backdropFilter !== 'none') {
       throw new Error(`Discard top card should be opaque white: ${JSON.stringify(discard)}`);
+    }
+    if (!discard.aligned) {
+      throw new Error(`Discard top card should align with its dashed holder: ${JSON.stringify(discard)}`);
     }
     if (cabo.oldCount !== 0 || cabo.color !== 'rgb(139, 120, 154)' || cabo.backgroundImage === 'none' || cabo.textStrokeWidth !== '0px') {
       throw new Error(`CABO callout should use liquid glass: ${JSON.stringify(cabo)}`);

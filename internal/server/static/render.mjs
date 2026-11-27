@@ -35,6 +35,20 @@ export function render() {
   for (let i = 0; i < state.revealCount; i++) setTimeout(() => snd('flip'), i * 95);
 }
 
+export function renderSelection() {
+  const picked = new Set(state.picked);
+  document.querySelectorAll('#myHand .card').forEach((card, index) => {
+    card.classList.toggle('picked', picked.has(index));
+  });
+  if (state.mode === 'swap') {
+    const swaps = new Set(state.swapPicks.map((target) => `${target.player}:${target.slot}`));
+    document.querySelectorAll('.card[data-ref]').forEach((card) => {
+      card.classList.toggle('picked', swaps.has(card.dataset.ref));
+    });
+  }
+  renderActions();
+}
+
 function renderTurnChip() {
   const el = $('turnChip');
   if (!state.view || state.view.gameOver || state.view.phase === 'roundEnd') {
